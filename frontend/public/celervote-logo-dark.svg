@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 60" width="240" height="60">
+  <defs>
+    <linearGradient id="iconGradD" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#14b8a6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="textGradD" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#14b8a6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Ballot box icon -->
+  <g transform="translate(4, 8)">
+    <rect x="2" y="16" width="36" height="26" rx="4" ry="4" fill="url(#iconGradD)" opacity="0.15" stroke="url(#iconGradD)" stroke-width="2"/>
+    <rect x="13" y="13" width="14" height="4" rx="2" ry="2" fill="url(#iconGradD)"/>
+    <rect x="8" y="22" width="24" height="14" rx="2" fill="white" opacity="0.15"/>
+    <polyline points="12,30 16,34 28,24" fill="none" stroke="url(#iconGradD)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="0" y1="10" x2="6" y2="10" stroke="#14b8a6" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+    <line x1="0" y1="15" x2="4" y2="15" stroke="#8b5cf6" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  </g>
+
+  <!-- CelerVote text — white Vote for dark bg -->
+  <text x="52" y="38" font-family="'Segoe UI', Arial, sans-serif" font-weight="800" font-size="26" fill="url(#textGradD)" letter-spacing="-0.5">Celer</text>
+  <text x="114" y="38" font-family="'Segoe UI', Arial, sans-serif" font-weight="800" font-size="26" fill="#f1f5f9" letter-spacing="-0.5">Vote</text>
+  <text x="52" y="50" font-family="'Segoe UI', Arial, sans-serif" font-weight="400" font-size="9" fill="#64748b" letter-spacing="2">FAST · SECURE · TRANSPARENT</text>
+</svg>

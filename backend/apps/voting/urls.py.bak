@@ -1,0 +1,16 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('check-eligibility/', views.CheckEligibilityView.as_view(), name='check-eligibility'),
+    path('cast/',                                        views.CastVoteView.as_view(),           name='cast-vote'),
+    path('results/<slug:slug>/',                         views.LiveResultsView.as_view(),         name='live-results'),
+    path('admin/fraud/<uuid:flag_id>/resolve/',          views.FraudFlagResolutionView.as_view(), name='fraud-resolve'),
+    path('admin/<slug:slug>/export/',                    views.ExportView.as_view(),              name='export-results'),
+    path('admin/<slug:slug>/reset/',                     views.ResetVotesView.as_view(),          name='reset-votes'),
+    path('admin/<slug:slug>/voters/',                    views.VoterActivityView.as_view(),       name='voter-activity'),
+    path('admin/<slug:slug>/fraud/',                     views.FraudFlagsView.as_view(),          name='fraud-flags'),
+    path('recover-vote/',     views.RecoverVoteView.as_view(),     name='recover-vote'),
+    path('check-reference/',  views.CheckReferenceView.as_view(),  name='check-reference'),
+    path('admin/audit-log/', views.AdminAuditLogView.as_view(), name='audit-log'),
+]

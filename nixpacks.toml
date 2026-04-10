@@ -1,0 +1,11 @@
+﻿[phases.setup]
+nixPkgs = ["python312", "postgresql"]
+
+[phases.install]
+cmds = ["cd backend && pip install -r requirements.txt"]
+
+[phases.build]
+cmds = ["cd backend && python manage.py collectstatic --noinput"]
+
+[start]
+cmd = "cd backend && daphne evoting.asgi:application --port $PORT --bind 0.0.0.0 -u /tmp/daphne.sock --workers 2"
