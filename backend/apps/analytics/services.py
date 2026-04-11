@@ -578,6 +578,13 @@ def export_results_pdf(event: Event) -> HttpResponse:
 
 # ── CSV Export ────────────────────────────────────────────────────────────────
 
+def _csv_safe(value: str) -> str:
+    """Prevent CSV formula injection by prefixing dangerous characters with a tab."""
+    s = str(value)
+    if s and s[0] in ('=', '+', '-', '@', '	', ' '):
+        s = "'" + s
+    return s
+
 def export_results_csv(event: Event) -> HttpResponse:
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="{event.slug}-results.csv"'
@@ -585,5 +592,5 @@ def export_results_csv(event: Event) -> HttpResponse:
     writer.writerow(['Category', 'Rank', 'Candidate', 'Votes', 'Percentage'])
     for cat in event.categories.filter(is_active=True):
         for i, c in enumerate(cat.candidates.filter(is_active=True).order_by('-vote_count'), 1):
-            writer.writerow([cat.name, i, c.name, c.vote_count, f'{c.vote_percentage:.1f}%'])
+            writer.writerow([_csv_safe(cat.name), i, _csv_safe(c.name), c.vote_count, f'{c.vote_percentage:.1f}%'])
     return response

@@ -152,13 +152,13 @@ REST_FRAMEWORK = {
    'DEFAULT_THROTTLE_RATES': {
     'anon':          '100/hour',
     'user':          '1000/hour',
-    'otp_request':  '10/hour',   # was probably 3/hour or 5/hour
-    'otp_verify':   '20/hour',
+    'otp_request':   '5/hour',    # tightened — 5 OTP requests per IP per hour
+    'otp_verify':    '10/hour',   # tightened — 10 verify attempts per IP per hour
     'login':         '10/hour',
     'vote':          '300/hour',
-    'vote_cast':     '30/minute',  # CastVoteView — 30 votes/min per IP (pre-write guard)
+    'vote_cast':     '30/minute',
     'admin_login':   '5/hour',
-    'check_user':    '30/hour',
+    'check_user':    '20/hour',
 },
 }
 

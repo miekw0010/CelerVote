@@ -266,7 +266,9 @@ class VoterRollVerifyView(APIView):
         if not event.is_open:
             return Response({'error': 'Voting is not currently open for this event.'}, status=400)
 
+        import re as _re
         voter_id = request.data.get('voter_id', '').strip().upper()
+        voter_id = _re.sub(r'[^A-Z0-9\-_/]', '', voter_id)[:50]  # sanitize + cap length
         if not voter_id:
             return Response({'error': 'Voter ID is required.'}, status=400)
 

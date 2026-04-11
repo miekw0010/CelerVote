@@ -89,15 +89,17 @@ class CastVoteView(APIView):
         voter = request.user if request.user.is_authenticated else None
 
         # Extract voter_group from JWT for organizational elections
+        # Use SimpleJWT's verified token — never decode without signature verification
         voter_group    = None
         voter_roll_entry = None
         try:
-            import jwt as _jwt
+            from rest_framework_simplejwt.tokens import AccessToken as _AccessToken
             auth_header = request.headers.get('Authorization', '')
             if auth_header.startswith('Bearer '):
-                decoded = _jwt.decode(auth_header.split(' ')[1], options={'verify_signature': False})
-                group_id = decoded.get('group_id')
-                roll_id  = decoded.get('voter_roll_id')
+                token_str = auth_header.split(' ')[1]
+                verified  = _AccessToken(token_str)  # raises if invalid/expired
+                group_id  = verified.get('group_id')
+                roll_id   = verified.get('voter_roll_id')
                 if group_id:
                     from apps.events.models import VoterGroup
                     voter_group = VoterGroup.objects.filter(id=group_id).first()
@@ -151,12 +153,11 @@ class CastVoteView(APIView):
             # ── Mark voter roll entry as used ──
             voter_roll_id = None
             try:
-                import jwt as _jwt
+                from rest_framework_simplejwt.tokens import AccessToken as _AccessToken
                 auth_header = request.headers.get('Authorization', '')
                 if auth_header.startswith('Bearer '):
-                    token_str = auth_header.split(' ')[1]
-                    decoded   = _jwt.decode(token_str, options={'verify_signature': False})
-                    voter_roll_id = decoded.get('voter_roll_id')
+                    verified      = _AccessToken(auth_header.split(' ')[1])
+                    voter_roll_id = verified.get('voter_roll_id')
             except Exception:
                 pass
 
@@ -254,19 +255,16 @@ class BulkCastVoteView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        # Extract voter_group from JWT
+        # Extract voter_group from JWT — always use verified decode
         voter_group = None
         voter_roll_entry = None
         try:
-            import jwt as _jwt
+            from rest_framework_simplejwt.tokens import AccessToken as _AccessToken
             auth_header = request.headers.get('Authorization', '')
             if auth_header.startswith('Bearer '):
-                decoded  = _jwt.decode(
-                    auth_header.split(' ')[1],
-                    options={'verify_signature': False}
-                )
-                group_id = decoded.get('group_id')
-                roll_id  = decoded.get('voter_roll_id')
+                verified = _AccessToken(auth_header.split(' ')[1])
+                group_id = verified.get('group_id')
+                roll_id  = verified.get('voter_roll_id')
                 if group_id:
                     from apps.events.models import VoterGroup
                     voter_group = VoterGroup.objects.filter(id=group_id).first()

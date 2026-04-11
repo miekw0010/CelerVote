@@ -9,6 +9,13 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.throttling import AnonRateThrottle
+
+class OfficialOTPRequestThrottle(AnonRateThrottle):
+    scope = 'otp_request'
+
+class OfficialOTPVerifyThrottle(AnonRateThrottle):
+    scope = 'otp_verify'
 
 from .models import Official, WithdrawalRequest, OfficialOTP
 from .serializers import (
@@ -71,11 +78,14 @@ class OfficialRequestOTPView(APIView):
     """
     permission_classes     = [AllowAny]
     authentication_classes = []
+    throttle_classes       = [OfficialOTPRequestThrottle]
 
     def post(self, request):
         phone = request.data.get('phone', '').strip()
-        if not phone:
-            return Response({'error': 'Phone number is required.'}, status=400)
+        # Basic sanitization — digits, +, spaces, dashes only
+        import re as _re
+        if not phone or not _re.match(r'^[\d\s\+\-\(\)]{7,20}$', phone):
+            return Response({'error': 'Enter a valid phone number.'}, status=400)
 
         official = Official.objects.filter(phone=phone, is_active=True).first()
         if not official:
@@ -112,6 +122,7 @@ class OfficialVerifyOTPView(APIView):
     """
     permission_classes     = [AllowAny]
     authentication_classes = []
+    throttle_classes       = [OfficialOTPVerifyThrottle]
 
     def post(self, request):
         phone = request.data.get('phone', '').strip()
