@@ -105,24 +105,86 @@ const CreateEventModal = ({ onCreated }: { onCreated: () => void }) => {
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  // Step 1: Create event
+  // Step 1: Create or update event
   const handleCreateEvent = async () => {
     if (!form.title || !form.slug) { toast({ title: "Title and slug are required.", variant: "destructive" }); return; }
     try {
       setLoading(true);
       const token = localStorage.getItem("access_token");
-      const formData = new FormData();
-      Object.entries(form).forEach(([key, value]) => {
-        if (value !== "" && value !== null && value !== undefined)
-          formData.append(key, typeof value === "boolean" ? (value ? "true" : "false") : String(value));
-      });
-      if (bannerFile) formData.append("banner_image", bannerFile);
-      const res = await fetch(`${API}/events/admin/`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
+
+      // Build PATCH data (no slug/event_type — immutable after creation)
+      const buildPatchData = () => {
+        const pd = new FormData();
+        Object.entries(form).forEach(([key, value]) => {
+          if (key === "slug" || key === "event_type") return;
+          if (value !== "" && value !== null && value !== undefined)
+            pd.append(key, typeof value === "boolean" ? (value ? "true" : "false") : String(value));
+        });
+        if (bannerFile) pd.append("banner_image", bannerFile);
+        return pd;
+      };
+
+      // Build POST data (all fields)
+      const buildPostData = () => {
+        const fd = new FormData();
+        Object.entries(form).forEach(([key, value]) => {
+          if (value !== "" && value !== null && value !== undefined)
+            fd.append(key, typeof value === "boolean" ? (value ? "true" : "false") : String(value));
+        });
+        if (bannerFile) fd.append("banner_image", bannerFile);
+        return fd;
+      };
+
+      let res: Response;
+      const slugToUse = createdSlug || form.slug;
+
+      if (createdSlug) {
+        // Already created this session — PATCH
+        res = await fetch(`${API}/events/admin/${createdSlug}/`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}` },
+          body: buildPatchData(),
+        });
+      } else {
+        // Try POST first — if slug conflict, check if it's our own event and PATCH it
+        res = await fetch(`${API}/events/admin/`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: buildPostData(),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          const isSlugConflict = errData?.slug || JSON.stringify(errData).toLowerCase().includes("slug");
+          if (isSlugConflict) {
+            // Check if this slug belongs to the current user — if so, just PATCH it
+            const checkRes = await fetch(`${API}/events/admin/${form.slug}/`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (checkRes.ok) {
+              // It's our event — update it instead
+              res = await fetch(`${API}/events/admin/${form.slug}/`, {
+                method: "PATCH",
+                headers: { Authorization: `Bearer ${token}` },
+                body: buildPatchData(),
+              });
+              if (!res.ok) { const err = await res.json(); throw new Error(JSON.stringify(err)); }
+              const data = await res.json();
+              setCreatedSlug(data.slug);
+              toast({ title: "Event updated! ✅" });
+              setStep(isOrg ? 2 : 2);
+              return;
+            }
+          }
+          throw new Error(JSON.stringify(errData));
+        }
+      }
+
       if (!res.ok) { const err = await res.json(); throw new Error(JSON.stringify(err)); }
       const data = await res.json();
       setCreatedSlug(data.slug);
-      toast({ title: "Event created! ✅" });
-      setStep(isOrg ? 2 : 2); // go to groups if org, else categories
+      toast({ title: createdSlug ? "Event updated! ✅" : "Event created! ✅" });
+      setStep(isOrg ? 2 : 2);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally { setLoading(false); }
@@ -246,8 +308,15 @@ const CreateEventModal = ({ onCreated }: { onCreated: () => void }) => {
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Slug *</label>
-              <Input name="slug" placeholder="src-presidential-election" value={form.slug} onChange={handleChange} />
-              <p className="text-xs text-muted-foreground mt-1">URL: /events/{form.slug || "your-slug"}</p>
+              <Input name="slug" placeholder="src-presidential-election" value={form.slug}
+                onChange={handleChange}
+                readOnly={!!createdSlug}
+                className={createdSlug ? "opacity-60 cursor-not-allowed bg-muted" : ""}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                URL: /events/{form.slug || "your-slug"}
+                {createdSlug && <span className="ml-2 text-secondary">· locked after creation</span>}
+              </p>
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Description</label>
