@@ -460,33 +460,161 @@ def send_custom_message_task(self, event_id: str, subject: str, message: str):
 @shared_task(bind=True, name='backup.pg_dump')
 def backup_database(self):
     """
-    Periodic PostgreSQL backup via pg_dump → uploads to Cloudinary as a binary blob.
-    Schedule via django-celery-beat: every 24h.
+    Periodic PostgreSQL backup via pg_dump.
+    Uploads to Google Drive (primary) and keeps last 7 backups.
+    Sends email alert to all superadmins on success or failure.
+    Schedule via django-celery-beat: every 24h (cron: 0 2 * * *)
     """
-    import subprocess, os, datetime, tempfile
+    import subprocess, os, datetime, tempfile, gzip, shutil, json
     db_url = os.environ.get('DATABASE_URL', '')
     if not db_url:
+        logger.error('[Backup] DATABASE_URL not set — backup skipped.')
         return {'error': 'DATABASE_URL not set'}
+
     timestamp = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-    with tempfile.NamedTemporaryFile(suffix='.dump', delete=False) as tmp:
-        tmp_path = tmp.name
+    tmp_path  = None
+    gz_path   = None
+
+    def _notify_admins(subject, body):
+        """Email all superadmin accounts."""
+        try:
+            from django.contrib.auth import get_user_model
+            _User = get_user_model()
+            admins = _User.objects.filter(role='superadmin').exclude(email='').values_list('email', flat=True)
+            for addr in admins:
+                try:
+                    send_email(addr, f'{BRAND_NAME} — {subject}', body)
+                except Exception as e:
+                    logger.error(f'[Backup] Failed to notify {addr}: {e}')
+        except Exception as e:
+            logger.error(f'[Backup] Admin notify error: {e}')
+
+    def _get_drive_service():
+        """Build an authenticated Google Drive service from env JSON."""
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
+        sa_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON', '')
+        if not sa_json:
+            raise ValueError('GOOGLE_SERVICE_ACCOUNT_JSON not set')
+        info = json.loads(sa_json)
+        creds = service_account.Credentials.from_service_account_info(
+            info, scopes=['https://www.googleapis.com/auth/drive']
+        )
+        return build('drive', 'v3', credentials=creds, cache_discovery=False)
+
+    def _upload_to_drive(service, file_path, filename):
+        """Upload file to the configured Google Drive folder."""
+        from googleapiclient.http import MediaFileUpload
+        folder_id = os.environ.get('GOOGLE_DRIVE_BACKUP_FOLDER_ID', '')
+        if not folder_id:
+            raise ValueError('GOOGLE_DRIVE_BACKUP_FOLDER_ID not set')
+        meta = {
+            'name':    filename,
+            'parents': [folder_id],
+        }
+        media = MediaFileUpload(file_path, mimetype='application/gzip', resumable=True)
+        f = service.files().create(body=meta, media_body=media, fields='id,webViewLink').execute()
+        return f.get('webViewLink', f'https://drive.google.com/file/d/{f["id"]}/view')
+
+    def _prune_old_backups(service, keep=7):
+        """Delete backups older than the most recent `keep` files in the folder."""
+        folder_id = os.environ.get('GOOGLE_DRIVE_BACKUP_FOLDER_ID', '')
+        if not folder_id:
+            return
+        results = service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false and name contains 'backup_'",
+            orderBy='createdTime asc',
+            fields='files(id,name,createdTime)',
+            pageSize=50,
+        ).execute()
+        files = results.get('files', [])
+        if len(files) > keep:
+            for old in files[:-keep]:
+                try:
+                    service.files().delete(fileId=old['id']).execute()
+                    logger.info(f'[Backup] Deleted old backup: {old["name"]}')
+                except Exception as e:
+                    logger.warning(f'[Backup] Could not delete {old["name"]}: {e}')
+
     try:
+        # 1. pg_dump
+        with tempfile.NamedTemporaryFile(suffix='.dump', delete=False) as tmp:
+            tmp_path = tmp.name
+
         result = subprocess.run(
             ['pg_dump', '--format=custom', '--file', tmp_path, db_url],
             capture_output=True, text=True, timeout=300
         )
         if result.returncode != 0:
-            return {'error': f'pg_dump failed: {result.stderr}'}
-        import cloudinary.uploader
-        with open(tmp_path, 'rb') as f:
-            upload_result = cloudinary.uploader.upload(
-                f,
-                public_id=f'db_backups/backup_{timestamp}',
-                resource_type='raw',
-                overwrite=False,
-            )
-        return {'status': 'ok', 'backup': upload_result.get('secure_url'), 'timestamp': timestamp}
+            msg = f'pg_dump failed: {result.stderr}'
+            logger.error(f'[Backup] {msg}')
+            _notify_admins('⚠️ Database Backup FAILED', f'Backup at {timestamp} failed.
+
+{msg}')
+            return {'error': msg}
+
+        # 2. Gzip (5-10x smaller)
+        gz_path  = tmp_path + '.gz'
+        filename = f'backup_{timestamp}.dump.gz'
+        with open(tmp_path, 'rb') as f_in, gzip.open(gz_path, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+
+        dump_size = os.path.getsize(tmp_path)
+        gz_size   = os.path.getsize(gz_path)
+        logger.info(f'[Backup] Dump: {dump_size/1024:.0f}KB → Gzipped: {gz_size/1024:.0f}KB')
+
+        # 3. Upload to Google Drive
+        drive   = _get_drive_service()
+        gdrive_url = _upload_to_drive(drive, gz_path, filename)
+        logger.info(f'[Backup] ✅ Uploaded to Google Drive: {gdrive_url}')
+
+        # 4. Prune old backups (keep last 7)
+        _prune_old_backups(drive, keep=7)
+
+        # 5. Email superadmins
+        _notify_admins(
+            '✅ Database Backup Successful',
+            f'CelerVote database backup completed successfully.
+
+'
+            f'Timestamp : {timestamp}
+'
+            f'File      : {filename}
+'
+            f'Size      : {gz_size / 1024:.0f} KB (compressed)
+'
+            f'Google Drive: {gdrive_url}
+
+'
+            f'To restore:
+'
+            f'  1. Download and decompress: gunzip {filename}
+'
+            f'  2. Restore: pg_restore --clean --if-exists -d $DATABASE_URL backup_{timestamp}.dump'
+        )
+
+        return {
+            'status':    'ok',
+            'file':      filename,
+            'gdrive':    gdrive_url,
+            'timestamp': timestamp,
+            'size_kb':   gz_size // 1024,
+        }
+
     except Exception as e:
+        logger.error(f'[Backup] Unexpected error: {e}')
+        _notify_admins(
+            '⚠️ Database Backup FAILED',
+            f'Backup at {timestamp} failed with error:
+
+{str(e)}'
+        )
         return {'error': str(e)}
+
     finally:
-        os.unlink(tmp_path)
+        for p in [tmp_path, gz_path]:
+            if p and os.path.exists(p):
+                try:
+                    os.unlink(p)
+                except Exception:
+                    pass
