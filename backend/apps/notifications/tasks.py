@@ -548,9 +548,7 @@ def backup_database(self):
         if result.returncode != 0:
             msg = f'pg_dump failed: {result.stderr}'
             logger.error(f'[Backup] {msg}')
-            _notify_admins('⚠️ Database Backup FAILED', f'Backup at {timestamp} failed.
-
-{msg}')
+            _notify_admins('⚠️ Database Backup FAILED', f'Backup at {timestamp} failed.\n\n' + msg)
             return {'error': msg}
 
         # 2. Gzip (5-10x smaller)
@@ -572,26 +570,17 @@ def backup_database(self):
         _prune_old_backups(drive, keep=7)
 
         # 5. Email superadmins
-        _notify_admins(
-            '✅ Database Backup Successful',
-            f'CelerVote database backup completed successfully.
-
-'
-            f'Timestamp : {timestamp}
-'
-            f'File      : {filename}
-'
-            f'Size      : {gz_size / 1024:.0f} KB (compressed)
-'
-            f'Google Drive: {gdrive_url}
-
-'
-            f'To restore:
-'
-            f'  1. Download and decompress: gunzip {filename}
-'
-            f'  2. Restore: pg_restore --clean --if-exists -d $DATABASE_URL backup_{timestamp}.dump'
+        success_msg = (
+            'CelerVote database backup completed successfully.\n\n'
+            + f'Timestamp : {timestamp}\n'
+            + f'File      : {filename}\n'
+            + f'Size      : {gz_size / 1024:.0f} KB (compressed)\n'
+            + f'Google Drive: {gdrive_url}\n\n'
+            + 'To restore:\n'
+            + f'  1. Download and decompress: gunzip {filename}\n'
+            + f'  2. Restore: pg_restore --clean --if-exists -d $DATABASE_URL backup_{timestamp}.dump'
         )
+        _notify_admins('✅ Database Backup Successful', success_msg)
 
         return {
             'status':    'ok',
@@ -605,9 +594,7 @@ def backup_database(self):
         logger.error(f'[Backup] Unexpected error: {e}')
         _notify_admins(
             '⚠️ Database Backup FAILED',
-            f'Backup at {timestamp} failed with error:
-
-{str(e)}'
+            f'Backup at {timestamp} failed with error:\n\n' + str(e)
         )
         return {'error': str(e)}
 
