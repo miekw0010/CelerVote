@@ -34,7 +34,8 @@ def verify_paystack_signature(request_body: bytes, signature_header: str) -> boo
     expected = hmac.new(secret, request_body, hashlib.sha512).hexdigest()
     return hmac.compare_digest(expected, signature_header)
 from .serializers import (
-    TicketEventListSerializer, TicketEventCreateSerializer,
+    TicketEventListSerializer, TicketEventPublicListSerializer,
+    TicketEventCreateSerializer,
     TicketEventUpdateSerializer, TicketTierSerializer,
     TicketTierCreateSerializer, TicketSerializer, TicketPurchaseSerializer,
 )
@@ -49,7 +50,10 @@ class TicketEventListView(APIView):
 
     def get(self, request):
         events = TicketEvent.objects.filter(is_active=True, is_published=True).prefetch_related('tiers')
-        return Response(TicketEventListSerializer(events, many=True).data)
+        # Staff/admin see full data including revenue; public sees safe version
+        if request.user.is_authenticated and hasattr(request.user, 'role') and request.user.role in ['admin', 'superadmin']:
+            return Response(TicketEventListSerializer(events, many=True).data)
+        return Response(TicketEventPublicListSerializer(events, many=True).data)
 
 
 class TicketEventDetailView(APIView):
@@ -58,7 +62,9 @@ class TicketEventDetailView(APIView):
 
     def get(self, request, slug):
         event = get_object_or_404(TicketEvent, slug=slug, is_active=True, is_published=True)
-        return Response(TicketEventListSerializer(event).data)
+        if request.user.is_authenticated and hasattr(request.user, 'role') and request.user.role in ['admin', 'superadmin']:
+            return Response(TicketEventListSerializer(event).data)
+        return Response(TicketEventPublicListSerializer(event).data)
 
 
 # ── Purchase ──────────────────────────────────────────────────────────────────

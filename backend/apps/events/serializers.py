@@ -40,6 +40,41 @@ class CandidateSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'vote_count', 'vote_percentage', 'created_at']
 
 
+class CandidatePublicSerializer(serializers.ModelSerializer):
+    """Public serializer — conditionally hides vote counts based on event settings."""
+    vote_count      = serializers.SerializerMethodField()
+    vote_percentage = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Candidate
+        fields = [
+            'id', 'name', 'description', 'photo', 'video_url',
+            'order', 'is_active', 'vote_count', 'vote_percentage', 'extra_info'
+            # ❌ No: created_at (internal detail)
+        ]
+        read_only_fields = ['id', 'vote_count', 'vote_percentage']
+
+    def _should_hide_counts(self):
+        event = self.context.get('event')
+        if not event:
+            return False
+        if event.hide_vote_counts:
+            return True
+        if not event.show_live_results and event.status == 'active':
+            return True
+        return False
+
+    def get_vote_count(self, obj):
+        if self._should_hide_counts():
+            return None
+        return obj.vote_count
+
+    def get_vote_percentage(self, obj):
+        if self._should_hide_counts():
+            return None
+        return obj.vote_percentage
+
+
 class CandidateWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Candidate
@@ -78,6 +113,32 @@ class CategorySerializer(serializers.ModelSerializer):
             'is_active', 'is_global', 'groups', 'candidates', 'candidate_count', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
+
+    def get_candidate_count(self, obj):
+        return obj.candidates.filter(is_active=True).count()
+
+
+class CategoryPublicSerializer(serializers.ModelSerializer):
+    """Public-facing category serializer — passes event context to candidates
+    so hide_vote_counts and show_live_results flags are respected."""
+    candidates      = serializers.SerializerMethodField()
+    candidate_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Category
+        fields = [
+            'id', 'name', 'description', 'order', 'voting_type',
+            'is_active', 'is_global', 'candidates', 'candidate_count'
+            # ❌ No: groups (internal org detail), created_at
+        ]
+        read_only_fields = ['id']
+
+    def get_candidates(self, obj):
+        event = self.context.get('event')
+        candidates = obj.candidates.filter(is_active=True)
+        return CandidatePublicSerializer(
+            candidates, many=True, context={'event': event}
+        ).data
 
     def get_candidate_count(self, obj):
         return obj.candidates.filter(is_active=True).count()
@@ -130,6 +191,33 @@ class EventListSerializer(serializers.ModelSerializer):
         return obj.categories.filter(is_active=True).count()
 
 
+class EventListPublicSerializer(serializers.ModelSerializer):
+    """Public event list — hides total_votes when live results are off."""
+    organizer_name = serializers.CharField(source='organizer.name', read_only=True)
+    category_count = serializers.SerializerMethodField()
+    total_votes    = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Event
+        fields = [
+            'id', 'slug', 'title', 'description', 'event_type',
+            'voting_type', 'voting_mode', 'status', 'organizer_name',
+            'is_paid', 'price_per_vote', 'currency',
+            'start_time', 'end_time', 'banner_image', 'thumbnail',
+            'theme_color', 'total_votes', 'category_count',
+            'show_live_results', 'results_published', 'hide_vote_counts',
+            # ❌ No: created_at (internal)
+        ]
+
+    def get_category_count(self, obj):
+        return obj.categories.filter(is_active=True).count()
+
+    def get_total_votes(self, obj):
+        if obj.hide_vote_counts or (not obj.show_live_results and obj.status == 'active'):
+            return None
+        return obj.total_votes
+
+
 class EventDetailSerializer(serializers.ModelSerializer):
     organizer_name = serializers.CharField(source='organizer.name', read_only=True)
     categories     = CategorySerializer(many=True, read_only=True)
@@ -150,6 +238,45 @@ class EventDetailSerializer(serializers.ModelSerializer):
             'voting_mode', 'show_group_results',
         ]
         read_only_fields = ['id', 'total_votes', 'created_at']
+
+
+class EventDetailPublicSerializer(serializers.ModelSerializer):
+    """Public event detail — removes organizer UUID, respects vote count flags,
+    passes event context to categories so candidate counts are hidden correctly."""
+    organizer_name = serializers.CharField(source='organizer.name', read_only=True)
+    categories     = serializers.SerializerMethodField()
+    is_open        = serializers.BooleanField(read_only=True)
+    total_votes    = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Event
+        fields = [
+            'id', 'slug', 'title', 'description', 'event_type',
+            'voting_type', 'status', 'is_open',
+            'organizer_name',
+            # ❌ No: organizer (UUID leaks internal user ID)
+            'allow_multiple_votes', 'max_votes_per_user', 'max_choices_per_vote',
+            'require_auth', 'start_time', 'end_time',
+            'banner_image', 'thumbnail', 'theme_color',
+            # ❌ No: theme_config (internal config)
+            'is_paid', 'price_per_vote', 'currency',
+            'show_live_results', 'results_published', 'hide_vote_counts',
+            # ❌ No: results_visible, languages (internal flags)
+            'total_votes', 'categories', 'voting_mode',
+            # ❌ No: show_group_results, created_at (internal)
+        ]
+        read_only_fields = ['id', 'total_votes']
+
+    def get_total_votes(self, obj):
+        if obj.hide_vote_counts or (not obj.show_live_results and obj.status == 'active'):
+            return None
+        return obj.total_votes
+
+    def get_categories(self, obj):
+        categories = obj.categories.filter(is_active=True)
+        return CategoryPublicSerializer(
+            categories, many=True, context={'event': obj}
+        ).data
 
 
 class EventCreateSerializer(serializers.ModelSerializer):

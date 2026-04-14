@@ -29,9 +29,13 @@ def encrypt_vote_data(data: dict) -> str:
 
 
 def get_device_fingerprint(request) -> str:
-    ua   = request.META.get('HTTP_USER_AGENT', '')
+    # NOTE: User-Agent is intentionally excluded from the fingerprint.
+    # Including it allowed vote manipulation by simply changing the UA header.
+    # We now use only the real client IP so one IP = one anonymous session
+    # per event regardless of browser/tool headers.
+    ip   = get_client_ip(request)
     lang = request.META.get('HTTP_ACCEPT_LANGUAGE', '')
-    raw  = f'{ua}{lang}'.encode()
+    raw  = f'{ip}{lang}'.encode()
     return hashlib.sha256(raw).hexdigest()[:50]
 
 

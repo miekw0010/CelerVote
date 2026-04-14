@@ -87,11 +87,6 @@ ASGI_APPLICATION = 'evoting.asgi.application'
 DATABASES = {
     'default': dj_database_url.config(
         default=config('DATABASE_URL', default='sqlite:///db.sqlite3'),
-        # conn_max_age=0 means connections are closed after each request.
-        # This is safer on Railway's limited Postgres (max ~100 connections).
-        # With Daphne async workers, persistent connections multiply fast and
-        # exhaust the limit. Use 0 here and rely on Railway's connection pooler
-        # or upgrade to a Postgres plan with higher connection limits.
         conn_max_age=config('DB_CONN_MAX_AGE', default=0, cast=int),
         conn_health_checks=True,
     )
@@ -115,8 +110,6 @@ CACHES = {
 # If Redis is unavailable (e.g. local dev), allow requests through instead of crashing with 400
 RATELIMIT_FAIL_OPEN = True
 
-# Number of reverse proxies in front of Django (Nginx, Cloudflare, etc).
-# Set to 1 in production. 0 = local dev (reads REMOTE_ADDR directly, no spoofing risk).
 TRUSTED_PROXY_COUNT = config('TRUSTED_PROXY_COUNT', default=0, cast=int)
 
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/1')
@@ -150,7 +143,7 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
    'DEFAULT_THROTTLE_RATES': {
-    'anon':          '100/hour',
+    'anon':          '20/hour',
     'user':          '1000/hour',
     'otp_request':   '5/hour',    # tightened — 5 OTP requests per IP per hour
     'otp_verify':    '10/hour',   # tightened — 10 verify attempts per IP per hour

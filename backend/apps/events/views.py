@@ -9,8 +9,10 @@ import django_filters
 
 from .models import Event, Category, Candidate
 from .serializers import (
-    EventListSerializer, EventDetailSerializer, EventCreateSerializer,
-    EventUpdateSerializer, CategorySerializer, CategoryWriteSerializer,
+    EventListSerializer, EventListPublicSerializer,
+    EventDetailSerializer, EventDetailPublicSerializer,
+    EventCreateSerializer, EventUpdateSerializer,
+    CategorySerializer, CategoryWriteSerializer,
     CandidateSerializer, CandidateWriteSerializer
 )
 
@@ -48,13 +50,13 @@ class EventFilter(django_filters.FilterSet):
 
 
 class PublicEventListView(generics.ListAPIView):
-    serializer_class   = EventListSerializer
     permission_classes = [AllowAny]
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class    = EventFilter
     search_fields      = ['title', 'description']
     ordering_fields    = ['created_at', 'start_time', 'total_votes']
     ordering           = ['-created_at']
+    serializer_class   = EventListPublicSerializer  # safe public version
 
     def get_queryset(self):
         qs = Event.objects.filter(
@@ -65,9 +67,9 @@ class PublicEventListView(generics.ListAPIView):
 
 
 class PublicEventDetailView(generics.RetrieveAPIView):
-    serializer_class   = EventDetailSerializer
     permission_classes = [AllowAny]
     lookup_field       = 'slug'
+    serializer_class   = EventDetailPublicSerializer  # safe public version
 
     def get_queryset(self):
         qs = Event.objects.filter(

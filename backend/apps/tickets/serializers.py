@@ -32,6 +32,21 @@ class TicketTierSerializer(serializers.ModelSerializer):
         ]
 
 
+class TicketTierPublicSerializer(serializers.ModelSerializer):
+    """Public-facing tier serializer — hides sales counts and total quantity."""
+    tickets_remaining = serializers.ReadOnlyField()
+    is_sold_out       = serializers.ReadOnlyField()
+
+    class Meta:
+        model  = TicketTier
+        fields = [
+            'id', 'name', 'description', 'price',
+            'perks', 'color', 'order', 'is_active',
+            'tickets_remaining', 'is_sold_out',
+            # ❌ No: tickets_sold, quantity, created_at
+        ]
+
+
 class TicketTierCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = TicketTier
@@ -51,6 +66,24 @@ class TicketEventListSerializer(serializers.ModelSerializer):
             'event_date', 'end_date', 'banner', 'is_active', 'is_published',
             'organizer_name', 'tiers', 'total_tickets_sold', 'total_revenue',
             'created_at',
+        ]
+
+    def get_organizer_name(self, obj):
+        return obj.organizer.name if hasattr(obj.organizer, "name") else obj.organizer.email
+
+
+class TicketEventPublicListSerializer(serializers.ModelSerializer):
+    """Public-facing serializer — hides revenue and sales data."""
+    tiers          = TicketTierPublicSerializer(many=True, read_only=True)
+    organizer_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = TicketEvent
+        fields = [
+            'id', 'title', 'slug', 'description', 'venue',
+            'event_date', 'end_date', 'banner', 'is_active', 'is_published',
+            'organizer_name', 'tiers',
+            # ❌ No: total_tickets_sold, total_revenue, created_at
         ]
 
     def get_organizer_name(self, obj):

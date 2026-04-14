@@ -14,7 +14,6 @@ interface TicketTier {
   id: string;
   name: string;
   price: number;
-  quantity: number;
   tickets_remaining: number;
   is_sold_out: boolean;
   color: string;
@@ -30,7 +29,6 @@ interface TicketEvent {
   event_date: string;
   banner: string | null;
   tiers: TicketTier[];
-  total_tickets_sold: number;
 }
 
 const fadeUp = {
@@ -187,11 +185,15 @@ export default function TicketsPage() {
                           </div>
 
                           <div className="mt-auto flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">{event.total_tickets_sold} sold</span>
-                            <div className="flex items-center gap-1 text-secondary text-sm font-semibold">
-                              Get Tickets <ChevronRight className="w-4 h-4" />
-                            </div>
-                          </div>
+  <span className="text-xs text-muted-foreground">
+    {event.tiers.every(t => t.is_sold_out)
+      ? 'Sold out'
+      : `${event.tiers.reduce((sum, t) => sum + t.tickets_remaining, 0)} remaining`}
+  </span>
+  <div className="flex items-center gap-1 text-secondary text-sm font-semibold">
+    Get Tickets <ChevronRight className="w-4 h-4" />
+  </div>
+</div>
                         </div>
                       </div>
                     </Link>
