@@ -36,6 +36,8 @@ export default function OfficialLoginPage() {
     try {
       const res = await officialsApi.requestOtp(phone.trim());
       if (res?.debug_code) setDevOtp(res.debug_code);
+      // Use the normalized phone returned by server so verify matches stored format
+      if (res?.phone) setPhone(res.phone);
       setStep("otp");
       startResendTimer();
       toast({ title: "OTP sent", description: "Check your phone for the 6-digit code." });
@@ -49,6 +51,7 @@ export default function OfficialLoginPage() {
     try {
       const res = await officialsApi.requestOtp(phone.trim());
       if (res?.debug_code) setDevOtp(res.debug_code);
+      if (res?.phone) setPhone(res.phone);
       setOtpDigits(["", "", "", "", "", ""]);
       startResendTimer();
       setTimeout(() => otpRefs[0].current?.focus(), 50);

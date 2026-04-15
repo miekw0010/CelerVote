@@ -30,6 +30,33 @@ def _is_admin(user):
     return user.is_authenticated and user.role in ('admin', 'superadmin')
 
 
+def _normalize_phone(value: str) -> str:
+    """
+    Normalize any Ghanaian phone format to E.164 (+233XXXXXXXXX).
+    Handles: 0592377833, 233592377833, +233592377833, +2330592377833
+    Returns the original value if it can't be normalized (non-GH numbers).
+    """
+    import re as _re
+    cleaned = _re.sub(r'[\s\-\(\)]', '', value.strip())
+    if cleaned.startswith('+'):
+        cleaned = cleaned[1:]
+    if not cleaned.isdigit():
+        return value  # can't normalize, return as-is
+    # Fix +2330XXXXXXXXX (13 digits starting with 2330)
+    if cleaned.startswith('2330') and len(cleaned) == 13:
+        cleaned = '233' + cleaned[4:]
+    # Convert 0XXXXXXXXX (10 digits) to 233XXXXXXXXX
+    if cleaned.startswith('0') and len(cleaned) == 10:
+        cleaned = '233' + cleaned[1:]
+    # Already 233XXXXXXXXX (12 digits)
+    if cleaned.startswith('233') and len(cleaned) == 12:
+        return '+' + cleaned
+    # Fallback — return with + prefix if reasonable length
+    if 7 <= len(cleaned) <= 15:
+        return '+' + cleaned
+    return value
+
+
 def _generate_otp():
     return ''.join(random.choices(string.digits, k=6))
 
@@ -81,32 +108,42 @@ class OfficialRequestOTPView(APIView):
     throttle_classes       = [OfficialOTPRequestThrottle]
 
     def post(self, request):
-        phone = request.data.get('phone', '').strip()
-        # Basic sanitization — digits, +, spaces, dashes only
+        raw_phone = request.data.get('phone', '').strip()
+        # Basic sanitization
         import re as _re
-        if not phone or not _re.match(r'^[\d\s\+\-\(\)]{7,20}$', phone):
+        if not raw_phone or not _re.match(r'^[\d\s\+\-\(\)]{7,20}$', raw_phone):
             return Response({'error': 'Enter a valid phone number.'}, status=400)
 
-        official = Official.objects.filter(phone=phone, is_active=True).first()
+        # Normalize to E.164 so we match however the number was stored
+        phone = _normalize_phone(raw_phone)
+
+        # Try exact normalized match first, then fallback variants
+        official = (
+            Official.objects.filter(phone=phone, is_active=True).first()
+            or Official.objects.filter(phone=raw_phone, is_active=True).first()
+        )
         if not official:
             return Response(
                 {'error': 'This number is not registered as an official. Please contact your administrator.'},
                 status=404
             )
 
-        # Invalidate any previous unused OTPs for this phone
-        OfficialOTP.objects.filter(phone=phone, is_used=False).update(is_used=True)
+        # Use the phone as stored in DB for OTP (so Arkesel matches)
+        stored_phone = official.phone
+
+        # Invalidate any previous unused OTPs for this official
+        OfficialOTP.objects.filter(phone=stored_phone, is_used=False).update(is_used=True)
 
         code = _generate_otp()
         OfficialOTP.objects.create(
-            phone=phone,
+            phone=stored_phone,
             code=code,
             expires_at=timezone.now() + timedelta(minutes=10),
         )
-        _send_official_otp(phone, code, official.name)
+        _send_official_otp(stored_phone, code, official.name)
 
         from django.conf import settings
-        response_data: dict = {'detail': 'OTP sent successfully.'}
+        response_data: dict = {'detail': 'OTP sent successfully.', 'phone': stored_phone}
         if settings.DEBUG:
             response_data['debug_code'] = code
 
@@ -125,18 +162,29 @@ class OfficialVerifyOTPView(APIView):
     throttle_classes       = [OfficialOTPVerifyThrottle]
 
     def post(self, request):
-        phone = request.data.get('phone', '').strip()
-        code  = request.data.get('code', '').strip()
+        raw_phone = request.data.get('phone', '').strip()
+        code      = request.data.get('code', '').strip()
 
-        if not phone or not code:
+        if not raw_phone or not code:
             return Response({'error': 'Phone and code are required.'}, status=400)
+
+        # Normalize so we always look up with the stored format
+        phone = _normalize_phone(raw_phone)
+
+        # Find the official first to get their stored phone
+        official_check = (
+            Official.objects.filter(phone=phone, is_active=True).first()
+            or Official.objects.filter(phone=raw_phone, is_active=True).first()
+        )
+        # Use stored phone for OTP lookup (matches what was used at generate time)
+        lookup_phone = official_check.phone if official_check else phone
 
         from django.conf import settings
 
         if settings.DEBUG:
             # Dev: verify against our own OfficialOTP DB record
             otp = OfficialOTP.objects.filter(
-                phone=phone, code=code, is_used=False
+                phone=lookup_phone, code=code, is_used=False
             ).order_by('-created_at').first()
 
             if not otp:
@@ -159,19 +207,19 @@ class OfficialVerifyOTPView(APIView):
             # Production: verify via Arkesel OTP API
             try:
                 from apps.notifications.tasks import arkesel_verify_otp
-                verified = arkesel_verify_otp(phone, code)
+                verified = arkesel_verify_otp(lookup_phone, code)
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).error(f'Arkesel verify error for official {phone}: {e}')
+                logging.getLogger(__name__).error(f'Arkesel verify error for official {lookup_phone}: {e}')
                 return Response({'error': 'Could not verify code. Please try again.'}, status=400)
 
             if not verified:
                 return Response({'error': 'Invalid or expired code. Please try again.'}, status=400)
 
             # Mark any local OTP as used so we stay in sync
-            OfficialOTP.objects.filter(phone=phone, is_used=False).update(is_used=True)
+            OfficialOTP.objects.filter(phone=lookup_phone, is_used=False).update(is_used=True)
 
-        official = Official.objects.filter(phone=phone, is_active=True).select_related(
+        official = Official.objects.filter(phone=lookup_phone, is_active=True).select_related(
             'event', 'ticket_event', 'user'
         ).first()
         if not official:
