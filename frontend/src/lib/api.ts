@@ -9,11 +9,38 @@ const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
 // ── Token Helpers ─────────────────────────────────────────────────
 
 export const getAccessToken = (): string | null => localStorage.getItem("access_token");
+// Kick off proactive refresh on page load
+setTimeout(() => {
+  const existing = localStorage.getItem('access_token');
+  if (existing) scheduleProactiveRefresh(existing);
+}, 500);
+
 export const getRefreshToken = (): string | null => localStorage.getItem("refresh_token");
+
+// Proactive background refresh — refresh access token 5 mins before expiry
+let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleProactiveRefresh(accessToken: string) {
+  if (_refreshTimer) clearTimeout(_refreshTimer);
+  try {
+    // Decode JWT payload to get expiry
+    const payload = JSON.parse(atob(accessToken.split('.')[1]));
+    const expiresIn = (payload.exp * 1000) - Date.now() - 5 * 60 * 1000; // 5 min before expiry
+    if (expiresIn > 0) {
+      _refreshTimer = setTimeout(async () => {
+        const ok = await tryRefreshToken();
+        if (ok) {
+          const newToken = localStorage.getItem('access_token');
+          if (newToken) scheduleProactiveRefresh(newToken);
+        }
+      }, expiresIn);
+    }
+  } catch { /* ignore decode errors */ }
+}
 
 export const saveTokens = (access: string, refresh: string) => {
   localStorage.setItem("access_token", access);
   localStorage.setItem("refresh_token", refresh);
+  scheduleProactiveRefresh(access);
 };
 
 export const clearTokens = () => {
@@ -76,11 +103,18 @@ export async function apiFetch(
       });
       return handleResponse(retryResponse);
     } else {
-      // Don't redirect if we're in the middle of a voting/payment flow
+      // Clear tokens and redirect silently — no error toast
+      clearTokens();
       const currentPath = window.location.pathname;
       const isVotingFlow = currentPath.includes('/events/') || currentPath.includes('/vote');
+      const isAdminSection = currentPath.startsWith('/admin');
+      const isOfficialSection = currentPath.startsWith('/official');
       if (!isVotingFlow) {
-        clearTokens();
+        if (isAdminSection || isOfficialSection) {
+          // Silent redirect — no error shown
+          window.location.replace(isOfficialSection ? '/official/login' : '/auth');
+          return;
+        }
         window.location.href = "/auth";
       }
       return;
@@ -460,10 +494,10 @@ export const officialsApi = {
   getWithdrawals: () => apiFetch("/officials/withdrawals/"),
 
   /** Official: create withdrawal request */
-  requestWithdrawal: (amount: number, note?: string) =>
+  requestWithdrawal: (amount: number, note?: string, paymentMethod?: string, paymentAccountName?: string, paymentAccountNumber?: string) =>
     apiFetch("/officials/withdrawals/", {
       method: "POST",
-      body: JSON.stringify({ amount, note }),
+      body: JSON.stringify({ amount, note, payment_method: paymentMethod, payment_account_name: paymentAccountName, payment_account_number: paymentAccountNumber }),
     }),
 
   // ── Admin ────────────────────────────────────────────────────────

@@ -127,6 +127,19 @@ class WithdrawalRequest(models.Model):
     )
     amount      = models.DecimalField(max_digits=10, decimal_places=2)
     note        = models.TextField(blank=True, help_text='Optional note from the official.')
+
+    # Payment details — where to send the money
+    PAYMENT_METHOD_CHOICES = [
+        ('mtn_momo',    'MTN Mobile Money'),
+        ('telecel',     'Telecel Cash'),
+        ('at_money',    'AirtelTigo Money'),
+        ('bank',        'Bank Transfer'),
+        ('other',       'Other'),
+    ]
+    payment_method         = models.CharField(max_length=30, choices=PAYMENT_METHOD_CHOICES, blank=True)
+    payment_account_name   = models.CharField(max_length=200, blank=True, help_text='Account/MoMo name')
+    payment_account_number = models.CharField(max_length=50, blank=True, help_text='Account/MoMo number')
+
     status      = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     admin_note  = models.TextField(blank=True, help_text='Admin response note.')
     reviewed_by = models.ForeignKey(

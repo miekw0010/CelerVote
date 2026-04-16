@@ -143,20 +143,20 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
    'DEFAULT_THROTTLE_RATES': {
-    'anon':          '20/hour',
-    'user':          '1000/hour',
-    'otp_request':   '5/hour',    # tightened — 5 OTP requests per IP per hour
-    'otp_verify':    '10/hour',   # tightened — 10 verify attempts per IP per hour
+    'anon':          '300/hour',   # increased — admin pages need higher limit
+    'user':          '2000/hour',
+    'otp_request':   '5/hour',
+    'otp_verify':    '10/hour',
     'login':         '10/hour',
     'vote':          '300/hour',
     'vote_cast':     '30/minute',
     'admin_login':   '5/hour',
-    'check_user':    '20/hour',
+    'check_user':    '30/hour',
 },
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=config('JWT_ACCESS_TOKEN_LIFETIME_MINUTES', default=20, cast=int)),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=config('JWT_ACCESS_TOKEN_LIFETIME_MINUTES', default=60, cast=int)),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=config('JWT_REFRESH_TOKEN_LIFETIME_DAYS', default=7, cast=int)),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,

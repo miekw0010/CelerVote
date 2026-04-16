@@ -68,7 +68,9 @@ class WithdrawalRequestSerializer(serializers.ModelSerializer):
         model  = WithdrawalRequest
         fields = [
             'id', 'official', 'official_name', 'official_phone', 'official_balance',
-            'event_title', 'amount', 'note', 'status', 'admin_note',
+            'event_title', 'amount', 'note',
+            'payment_method', 'payment_account_name', 'payment_account_number',
+            'status', 'admin_note',
             'reviewed_by', 'reviewed_by_name', 'reviewed_at', 'created_at',
         ]
         read_only_fields = ['id', 'official', 'status', 'reviewed_by', 'reviewed_at', 'created_at']
@@ -88,8 +90,11 @@ class WithdrawalRequestSerializer(serializers.ModelSerializer):
 
 
 class WithdrawalCreateSerializer(serializers.Serializer):
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=1)
-    note   = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    amount                 = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=1)
+    note                   = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    payment_method         = serializers.CharField(required=False, allow_blank=True, max_length=30)
+    payment_account_name   = serializers.CharField(required=False, allow_blank=True, max_length=200)
+    payment_account_number = serializers.CharField(required=False, allow_blank=True, max_length=50)
 
     def validate_amount(self, value):
         official = self.context.get('official')

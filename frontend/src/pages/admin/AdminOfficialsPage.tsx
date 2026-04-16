@@ -370,6 +370,33 @@ function WithdrawalCard({ w, onReview }: { w: any; onReview: (id: string, action
                     </p>
                   </div>
                 )}
+                {/* Payment details */}
+                {w.payment_method && (
+                  <div className="col-span-2 bg-muted/30 rounded-xl p-3 space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Payment Details</p>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Method</span>
+                      <span className="font-medium">{
+                        w.payment_method === 'mtn_momo' ? 'MTN Mobile Money' :
+                        w.payment_method === 'telecel' ? 'Telecel Cash' :
+                        w.payment_method === 'at_money' ? 'AirtelTigo Money' :
+                        w.payment_method === 'bank' ? 'Bank Transfer' : w.payment_method
+                      }</span>
+                    </div>
+                    {w.payment_account_name && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Account name</span>
+                        <span className="font-medium">{w.payment_account_name}</span>
+                      </div>
+                    )}
+                    {w.payment_account_number && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Account number</span>
+                        <span className="font-mono font-semibold text-secondary">{w.payment_account_number}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {w.note && <div className="col-span-2">
                   <p className="text-xs text-muted-foreground">Official's note</p>
                   <p className="text-sm italic">{w.note}</p>

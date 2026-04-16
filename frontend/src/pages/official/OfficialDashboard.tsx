@@ -799,10 +799,13 @@ function ResultsView({ results, isOrg }: { results: any[]; isOrg: boolean }) {
 function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any }) {
   const { toast }                     = useToast();
   const [activeTab, setActiveTab]     = useState<"overview" | "voters" | "results" | "withdraw">("overview");
-  const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [withdrawNote, setWithdrawNote]     = useState("");
-  const [withdrawing, setWithdrawing]       = useState(false);
-  const [withdrawals, setWithdrawals]       = useState<any[]>(dashData?.withdrawals || []);
+  const [withdrawAmount, setWithdrawAmount]             = useState("");
+  const [withdrawNote, setWithdrawNote]                 = useState("");
+  const [withdrawPaymentMethod, setWithdrawPaymentMethod] = useState("");
+  const [withdrawAccountName, setWithdrawAccountName]   = useState("");
+  const [withdrawAccountNumber, setWithdrawAccountNumber] = useState("");
+  const [withdrawing, setWithdrawing]                   = useState(false);
+  const [withdrawals, setWithdrawals]                   = useState<any[]>(dashData?.withdrawals || []);
   const [voters, setVoters]           = useState<any[]>([]);
   const [votersLoading, setVotersLoading] = useState(false);
   const [voterSearch, setVoterSearch] = useState("");
@@ -862,11 +865,13 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
     const amount = parseFloat(withdrawAmount);
     if (!amount || amount <= 0) { toast({ title: "Enter a valid amount", variant: "destructive" }); return; }
     if (amount > (rev?.my_balance || 0)) { toast({ title: "Amount exceeds your balance", variant: "destructive" }); return; }
+    if (!withdrawPaymentMethod) { toast({ title: "Select a payment method", variant: "destructive" }); return; }
+    if (!withdrawAccountNumber.trim()) { toast({ title: "Enter your account/MoMo number", variant: "destructive" }); return; }
     setWithdrawing(true);
     try {
-      const wr = await officialsApi.requestWithdrawal(amount, withdrawNote);
+      const wr = await officialsApi.requestWithdrawal(amount, withdrawNote, withdrawPaymentMethod, withdrawAccountName, withdrawAccountNumber);
       toast({ title: "Withdrawal request submitted ✅", description: "Admin will review shortly." });
-      setWithdrawAmount(""); setWithdrawNote("");
+      setWithdrawAmount(""); setWithdrawNote(""); setWithdrawPaymentMethod(""); setWithdrawAccountName(""); setWithdrawAccountNumber("");
       setWithdrawals(prev => [wr, ...prev]);
     } catch (e: any) { toast({ title: "Request failed", description: e?.message, variant: "destructive" }); }
     finally { setWithdrawing(false); }
@@ -1019,14 +1024,29 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
                   <Input type="number" placeholder="0.00" min={1} max={rev.my_balance}
                     value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="h-11 pl-14 text-base" />
                 </div>
+                <p className="text-xs text-muted-foreground">Available: <span className="font-semibold text-secondary">{fmt(rev.my_balance)}</span></p>
+                {/* Payment info */}
+                <div className="border border-border/40 rounded-xl p-3 space-y-2 bg-muted/20">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payment Details</p>
+                  <select value={withdrawPaymentMethod} onChange={e => setWithdrawPaymentMethod(e.target.value)}
+                    className="w-full h-10 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                    <option value="">Select payment method *</option>
+                    <option value="mtn_momo">MTN Mobile Money</option>
+                    <option value="telecel">Telecel Cash</option>
+                    <option value="at_money">AirtelTigo Money</option>
+                    <option value="bank">Bank Transfer</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <Input placeholder="Account / MoMo name" value={withdrawAccountName}
+                    onChange={e => setWithdrawAccountName(e.target.value)} className="h-10" />
+                  <Input placeholder="Account / MoMo number *" value={withdrawAccountNumber}
+                    onChange={e => setWithdrawAccountNumber(e.target.value)} className="h-10" />
+                </div>
                 <Input placeholder="Note (optional)" value={withdrawNote} onChange={e => setWithdrawNote(e.target.value)} className="h-10" />
                 <Button onClick={handleWithdraw} disabled={withdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0}
                   className="w-full h-11 bg-secondary text-secondary-foreground hover:bg-secondary/90 gap-2">
                   {withdrawing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />} Submit Request
                 </Button>
-                <p className="text-xs text-muted-foreground text-center">
-                  Available: <span className="font-semibold text-secondary">{fmt(rev.my_balance)}</span>
-                </p>
               </div>
             </div>
             {withdrawals.length > 0 && (
@@ -1061,9 +1081,12 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
 // ── Ticket Withdrawal Modal ───────────────────────────────────────────────────
 function TicketWithdrawModal({ onClose, balance }: { onClose: () => void; balance: number }) {
   const { toast }           = useToast();
-  const [amount, setAmount] = useState("");
-  const [note, setNote]     = useState("");
-  const [loading, setLoading] = useState(false);
+  const [amount, setAmount]               = useState("");
+  const [note, setNote]                   = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [accountName, setAccountName]     = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [loading, setLoading]             = useState(false);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [histLoading, setHistLoading] = useState(true);
 
@@ -1075,12 +1098,14 @@ function TicketWithdrawModal({ onClose, balance }: { onClose: () => void; balanc
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) { toast({ title: "Enter a valid amount", variant: "destructive" }); return; }
     if (amt > balance) { toast({ title: "Amount exceeds your available balance", variant: "destructive" }); return; }
+    if (!paymentMethod) { toast({ title: "Select a payment method", variant: "destructive" }); return; }
+    if (!accountNumber.trim()) { toast({ title: "Enter your account/MoMo number", variant: "destructive" }); return; }
     setLoading(true);
     try {
-      const wr = await officialsApi.requestWithdrawal(amt, note);
+      const wr = await officialsApi.requestWithdrawal(amt, note, paymentMethod, accountName, accountNumber);
       toast({ title: "Withdrawal request submitted ✅" });
       setWithdrawals(prev => [wr, ...prev]);
-      setAmount(""); setNote("");
+      setAmount(""); setNote(""); setPaymentMethod(""); setAccountName(""); setAccountNumber("");
     } catch (e: any) { toast({ title: "Request failed", description: e?.message, variant: "destructive" }); }
     finally { setLoading(false); }
   };
@@ -1102,6 +1127,21 @@ function TicketWithdrawModal({ onClose, balance }: { onClose: () => void; balanc
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">GHS</span>
               <Input type="number" placeholder="0.00" min={1} max={balance} value={amount} onChange={e => setAmount(e.target.value)} className="h-11 pl-14 text-base" />
+            </div>
+            {/* Payment details */}
+            <div className="border border-border/40 rounded-xl p-3 space-y-2 bg-muted/20">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payment Details</p>
+              <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+                className="w-full h-10 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                <option value="">Select payment method *</option>
+                <option value="mtn_momo">MTN Mobile Money</option>
+                <option value="telecel">Telecel Cash</option>
+                <option value="at_money">AirtelTigo Money</option>
+                <option value="bank">Bank Transfer</option>
+                <option value="other">Other</option>
+              </select>
+              <Input placeholder="Account / MoMo name" value={accountName} onChange={e => setAccountName(e.target.value)} className="h-10" />
+              <Input placeholder="Account / MoMo number *" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} className="h-10" />
             </div>
             <Input placeholder="Note (optional)" value={note} onChange={e => setNote(e.target.value)} className="h-10" />
             <Button onClick={handleSubmit} disabled={loading || !amount}
