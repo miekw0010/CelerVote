@@ -6,13 +6,8 @@ from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import IsAdminUser
 
-from django.contrib.sitemaps.views import sitemap
-from apps.core.sitemaps import StaticViewSitemap
 
 
-sitemaps = {
-    "static": StaticViewSitemap,
-}
 
 urlpatterns = [
     path(config('ADMIN_URL', default='cv-admin/'), admin.site.urls),
@@ -26,8 +21,6 @@ urlpatterns = [
     path('api/v1/tickets/',       include('apps.tickets.urls')),
     path('api/v1/officials/',     include('apps.officials.urls')),
 
-
-    path("sitemap.xml", sitemap, {"sitemaps": sitemaps}),
 ]
 
 # API docs — only available in DEBUG mode, and only to admin users

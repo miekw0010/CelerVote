@@ -1,14 +1,18 @@
-User-agent: Googlebot
-Allow: /
+# CelerVote — celervote.com
+# robots.txt — tells search engine crawlers what they can and cannot read
 
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# Allow all crawlers to read all public pages
 User-agent: *
 Allow: /
+
+# Block admin and official portals from being indexed
+# (these are login-protected anyway, but being explicit is best practice)
+Disallow: /admin/
+Disallow: /official/
+
+# Block auth callback paths
+Disallow: /auth/callback
+
+# Tell all crawlers where the sitemap is
+# This is the most important line — Google uses this to discover all your pages
+Sitemap: https://celervote.com/sitemap.xml
