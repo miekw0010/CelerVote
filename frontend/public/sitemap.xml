@@ -25,17 +25,19 @@
     <priority>1.0</priority>
   </url>
 
-  <!-- Events listing — very important, changes daily -->
+ 
+
+  <!-- Results page -->
   <url>
-    <loc>https://celervote.com/events</loc>
+    <loc>https://celervote.com/results</loc>
     <lastmod>2026-04-16</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
 
-  <!-- Results page -->
+   <!-- Events listing — very important, changes daily -->
   <url>
-    <loc>https://celervote.com/results</loc>
+    <loc>https://celervote.com/events</loc>
     <lastmod>2026-04-16</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
