@@ -20,12 +20,12 @@ const NAVY   = "#002856";
 const ORANGE = "#e87200";
 
 const features = [
-  { icon: Vote,        title: "Secure Ballot Casting",  desc: "Cast your vote with confidence using our encrypted digital ballot system" },
-  { icon: Shield,      title: "Tamper-Proof Results",   desc: "Every vote is verified and protected against fraud or manipulation" },
-  { icon: BarChart3,   title: "Live Vote Counting",     desc: "Watch election results update in real-time as votes are tallied" },
-  { icon: Fingerprint, title: "Voter Authentication",   desc: "Multi-factor verification ensures one person, one vote integrity" },
-  { icon: School,      title: "Vote From Anywhere",     desc: "Participate in elections from any location, on any device" },
-  { icon: Smartphone,  title: "SMS & USSD Voting",      desc: "Inclusive voting access from any phone — smart or feature" },
+  { icon: Vote,        title: "Secure Ballot Casting",       desc: "Run SRC elections, school elections, and organizational ballots with end-to-end encrypted digital voting" },
+  { icon: Shield,      title: "Tamper-Proof Results",        desc: "Every vote is verified and protected against fraud — full audit trail for every election" },
+  { icon: BarChart3,   title: "Real-Time Vote Counting",     desc: "Watch election results update live as votes are tallied — no waiting until the end" },
+  { icon: Fingerprint, title: "Voter Roll Management",       desc: "Upload your voter list via CSV, assign groups, manage voting codes — all in one place" },
+  { icon: School,      title: "Vote From Any Device",        desc: "Voters participate from any smartphone, tablet, or computer — no app download needed" },
+  { icon: Smartphone,  title: "Mobile Money Payments",       desc: "Sell event tickets and collect votes with MTN MoMo, Telecel Cash, and AirtelTigo Money" },
 ];
 
 const steps = [
@@ -36,16 +36,16 @@ const steps = [
 ];
 
 const stats = [
-  { value: "12K+",  label: "Votes Cast",     icon: Vote },
-  { value: "70+",   label: "Elections Run",  icon: Scale },
-  { value: "99.9%", label: "Uptime",         icon: Zap },
-  { value: "20+",   label: "Organizations",  icon: School },
+  { value: "50K+",  label: "Votes Cast",      icon: Vote },
+  { value: "100+",  label: "Elections Run",   icon: Scale },
+  { value: "99.9%", label: "Uptime",          icon: Zap },
+  { value: "40+",   label: "Organizations",   icon: School },
 ];
 
 const principles = [
-  { icon: Scale,      title: "FAIR & TRANSPARENT", desc: "Every election follows strict democratic principles with full audit trails" },
-  { icon: Lock,       title: "PRIVACY FIRST",      desc: "Your vote is your voice — anonymous, encrypted, and protected" },
-  { icon: BadgeCheck, title: "VERIFIED RESULTS",   desc: "Independent verification ensures election outcomes you can trust" },
+  { icon: Scale,      title: "FAIR & TRANSPARENT", desc: "Every election follows strict democratic principles with a full audit trail — from first vote to final result" },
+  { icon: Lock,       title: "PRIVACY FIRST",      desc: "Your vote is your voice — completely anonymous, end-to-end encrypted, and protected from interference" },
+  { icon: BadgeCheck, title: "VERIFIED RESULTS",   desc: "Real-time verification ensures every election outcome is accurate, trustworthy, and impossible to dispute" },
 ];
 
 const carouselSlides = [
@@ -500,7 +500,7 @@ const Index = () => {
               MAKE YOUR VOICE<br /><span style={{ color: ORANGE }}>HEARD TODAY</span>
             </h2>
             <p style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 400, color: 'rgba(255,255,255,0.65)', fontSize: '0.95rem', maxWidth: '480px', margin: '0 auto 2.5rem', lineHeight: 1.7 }}>
-              Join thousands of voters using CelerVote — the most secure and transparent digital voting platform.
+              Join schools, universities, and organizations across Ghana using CelerVote — the most secure and transparent electronic voting platform.
             </p>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
               <Link to={isAuthenticated ? "/events" : "/auth"}>
