@@ -2,9 +2,10 @@ import jsPDF from "jspdf";
 
 // ── Brand ──────────────────────────────────────────────────────────────────
 const C = {
-  teal:       "#14b8a6",
-  tealDark:   "#0d9488",
-  tealLight:  "#ccfbf1",
+  navy:       "#002856",
+  navyDark:   "#001a38",
+  orange:     "#e87200",
+  orangeLight:"#fef3c7",
   dark:       "#0f172a",
   slate:      "#1e293b",
   slate2:     "#334155",
@@ -20,18 +21,20 @@ const C = {
   red:        "#ef4444",
   purple:     "#8b5cf6",
   purpleLight:"#ede9fe",
+  teal:       "#14b8a6",
+  tealLight:  "#ccfbf1",
 };
 
 export function exportResultsPDF(event: any) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const W   = 210;
   const H   = 297;
-  const ML  = 14; // margin left
-  const MR  = 14; // margin right
-  const CW  = W - ML - MR; // content width
+  const ML  = 12;
+  const MR  = 12;
+  const CW  = W - ML - MR;
   let   y   = 0;
 
-  // ── Helpers ──────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────────────────
   const rgb = (hex: string): [number, number, number] => [
     parseInt(hex.slice(1,3),16),
     parseInt(hex.slice(3,5),16),
@@ -49,7 +52,7 @@ export function exportResultsPDF(event: any) {
     if (y + needed > H - 22) {
       drawFooter();
       doc.addPage();
-      y = 20;
+      y = 18;
     }
   };
 
@@ -58,7 +61,7 @@ export function exportResultsPDF(event: any) {
     doc.line(ML, yy, W - MR, yy);
   };
 
-  // ── Footer ───────────────────────────────────────────────
+  // ── Footer ───────────────────────────────────────────────────────────────
   const drawFooter = () => {
     const pg = doc.getCurrentPageInfo().pageNumber;
     hline(H - 14, C.border, 0.3);
@@ -68,51 +71,63 @@ export function exportResultsPDF(event: any) {
     doc.text(`Page ${pg}`, W - MR, H - 9, { align: "right" });
   };
 
-  // ══════════════════════════════════════════════════════════
-  // PAGE 1 — COVER / HEADER
-  // ══════════════════════════════════════════════════════════
+  const isOrg   = event.voting_mode === "organizational";
+  const categories = event.categories || [];
+
+  // Separate global vs group categories for org elections
+  const globalCats = isOrg ? categories.filter((c: any) => c.is_global !== false) : categories;
+  const groupCats  = isOrg ? categories.filter((c: any) => c.is_global === false)  : [];
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 1 — HEADER
+  // ══════════════════════════════════════════════════════════════════════════
 
   // Full-width dark hero
-  fill(C.dark);
-  doc.rect(0, 0, W, 52, "F");
+  fill(C.navy);
+  doc.rect(0, 0, W, 54, "F");
 
-  // Left teal accent strip
-  fill(C.teal);
-  doc.rect(0, 0, 5, 52, "F");
+  // Left accent strip
+  fill(C.orange);
+  doc.rect(0, 0, 5, 54, "F");
 
-  // Brand name
+  // Brand
   color(C.white); font("bold", 22);
   doc.text("CelerVote", ML + 6, 18);
-
-  color(C.teal); font("normal", 8);
+  color(C.orange); font("normal", 8);
   doc.text("Secure Electronic Voting Platform", ML + 6, 25);
 
-  // Divider dot
-  fill(C.teal);
+  // Report label
+  fill(C.orange);
   doc.circle(ML + 5, 31, 0.8, "F");
-
   color(C.grayLight); font("normal", 7.5);
   doc.text("OFFICIAL RESULTS REPORT", ML + 8, 32);
 
+  // Org election badge
+  if (isOrg) {
+    fill(C.purple);
+    doc.roundedRect(ML + 6, 35, 36, 6, 1, 1, "F");
+    color(C.white); font("bold", 6);
+    doc.text("ORGANISATIONAL ELECTION", ML + 24, 39.5, { align: "center" });
+  }
+
   // Event title — right side
   color(C.white); font("bold", 13);
-  const titleLines = doc.splitTextToSize(event.title || "Results", 85);
+  const titleLines = doc.splitTextToSize(event.title || "Results", 90);
   doc.text(titleLines, W - MR, 16, { align: "right" });
 
   // Status badge
   const statusMap: Record<string, {label: string, color: string}> = {
-    active:    { label: "LIVE",      color: C.teal },
-    ended:     { label: "ENDED",     color: C.gray },
-    paused:    { label: "PAUSED",    color: C.gold },
+    active:    { label: "LIVE",      color: C.teal   },
+    ended:     { label: "ENDED",     color: C.gray   },
+    paused:    { label: "PAUSED",    color: C.gold   },
     draft:     { label: "DRAFT",     color: C.purple },
     scheduled: { label: "SCHEDULED", color: C.purple },
   };
-  const st = statusMap[event.status] || { label: event.status?.toUpperCase(), color: C.gray };
-  const badgeX = W - MR - 22;
+  const st = statusMap[event.status] || { label: (event.status||"").toUpperCase(), color: C.gray };
   fill(st.color);
-  doc.roundedRect(badgeX, 32, 22, 7, 1, 1, "F");
+  doc.roundedRect(W - MR - 22, 33, 22, 7, 1, 1, "F");
   color(C.white); font("bold", 6.5);
-  doc.text(st.label, badgeX + 11, 37, { align: "center" });
+  doc.text(st.label, W - MR - 11, 38, { align: "center" });
 
   // Generated date
   const now = new Date().toLocaleString("en-GB", {
@@ -120,162 +135,151 @@ export function exportResultsPDF(event: any) {
     hour: "2-digit", minute: "2-digit"
   });
   color(C.grayLight); font("normal", 7);
-  doc.text(`Generated: ${now}`, W - MR, 44, { align: "right" });
+  doc.text(`Generated: ${now}`, W - MR, 46, { align: "right" });
 
-  y = 58;
+  y = 60;
 
-  // ── Event Meta Row ───────────────────────────────────────
-  const categories  = event.categories || [];
-  const totalVotes  = event.total_votes || 0;
+  // ── Event Meta Cards ─────────────────────────────────────────────────────
+  const totalVotes = event.total_votes || 0;
 
-  const metaItems = [
-    { icon: "VOTES",    value: totalVotes.toLocaleString(),                       color: C.teal   },
-    { icon: "CATS",     value: String(categories.length),                         color: C.purple },
-    { icon: "TYPE",     value: (event.event_type || "").replace(/_/g," ").toUpperCase(), color: C.slate2 },
-    { icon: "VOTING",   value: (event.voting_type || "").replace(/_/g," ").toUpperCase(), color: C.slate2 },
+  const metaItems: any[] = [
+    { icon: "TOTAL VOTES", value: totalVotes.toLocaleString(),                              color: C.teal   },
+    { icon: "CATEGORIES",  value: String(categories.length),                                color: C.purple },
+    { icon: "TYPE",        value: (event.event_type||"").replace(/_/g," ").toUpperCase(),   color: C.slate2 },
+    { icon: "VOTING",      value: (event.voting_type||"").replace(/_/g," ").toUpperCase(),  color: C.slate2 },
   ];
-  if (event.is_paid) {
-    metaItems.push({ icon: "FEE", value: `${event.currency} ${event.price_per_vote}`, color: C.gold });
+  if (isOrg) {
+    metaItems.push({ icon: "MODE",    value: "ORGANISATIONAL",                              color: C.purple });
+    metaItems.push({ icon: "GENERAL", value: String(globalCats.length) + " categories",     color: C.navy   });
+    if (groupCats.length > 0) {
+      metaItems.push({ icon: "GROUP", value: String(groupCats.length) + " categories",      color: C.orange });
+    }
   }
-  if (event.start_time) {
-    metaItems.push({ icon: "START", value: new Date(event.start_time).toLocaleDateString("en-GB"), color: C.gray });
-  }
-  if (event.end_time) {
-    metaItems.push({ icon: "END", value: new Date(event.end_time).toLocaleDateString("en-GB"), color: C.gray });
-  }
+  if (event.is_paid)    metaItems.push({ icon: "FEE",   value: `${event.currency} ${event.price_per_vote}`, color: C.gold });
+  if (event.start_time) metaItems.push({ icon: "START", value: new Date(event.start_time).toLocaleDateString("en-GB"), color: C.gray });
+  if (event.end_time)   metaItems.push({ icon: "END",   value: new Date(event.end_time).toLocaleDateString("en-GB"),   color: C.gray });
 
-  // Draw meta cards in rows of 4
-  const cardCols  = 4;
-  const cardPad   = 3;
-  const cardH     = 16;
-  const cardWw    = (CW - cardPad * (cardCols - 1)) / cardCols;
+  const cardCols = 4;
+  const cardPad  = 3;
+  const cardH    = 16;
+  const cardWw   = (CW - cardPad * (cardCols - 1)) / cardCols;
 
   metaItems.forEach((item, i) => {
     const col = i % cardCols;
     const row = Math.floor(i / cardCols);
-    if (col === 0 && row > 0) y += cardH + cardPad;
-    const cx = ML + col * (cardWw + cardPad);
-    const cy = y + row * (cardH + cardPad);
-
-    // Card bg
-    fill(C.light);
-    stroke(C.border);
-    doc.setLineWidth(0.2);
+    const cx  = ML + col * (cardWw + cardPad);
+    const cy  = y + row * (cardH + cardPad);
+    fill(C.light); stroke(C.border); doc.setLineWidth(0.2);
     doc.roundedRect(cx, cy, cardWw, cardH, 2, 2, "FD");
-
-    // Top teal accent
-    fill(item.color);
-    doc.roundedRect(cx, cy, cardWw, 2, 1, 1, "F");
-
-    // Value
-    color(C.dark); font("bold", 10);
-    doc.text(item.value, cx + cardWw/2, cy + 8.5, { align: "center", maxWidth: cardWw - 4 });
-
-    // Label
-    color(C.gray); font("normal", 6.5);
-    doc.text(item.icon, cx + cardWw/2, cy + 13, { align: "center" });
+    fill(item.color); doc.roundedRect(cx, cy, cardWw, 2, 1, 1, "F");
+    color(C.dark); font("bold", 9);
+    doc.text(item.value, cx + cardWw/2, cy + 9, { align: "center", maxWidth: cardWw - 4 });
+    color(C.gray); font("normal", 6);
+    doc.text(item.icon, cx + cardWw/2, cy + 13.5, { align: "center" });
   });
 
   const metaRows = Math.ceil(metaItems.length / cardCols);
   y += metaRows * (cardH + cardPad) + 4;
 
-  hline(y, C.border, 0.3);
-  y += 8;
+  hline(y, C.border, 0.3); y += 8;
 
-  // ══════════════════════════════════════════════════════════
-  // CATEGORY RESULTS
-  // ══════════════════════════════════════════════════════════
-
-  categories.forEach((cat: any, ci: number) => {
-    const cands         = [...(cat.candidates || [])].sort((a:any,b:any) => (b.vote_count||0)-(a.vote_count||0));
-    const totalCatVotes = cands.reduce((s:number,c:any) => s+(c.vote_count||0), 0);
+  // ══════════════════════════════════════════════════════════════════════════
+  // HELPER: draw one category block
+  // ══════════════════════════════════════════════════════════════════════════
+  const drawCategory = (cat: any, ci: number, sectionLabel?: string) => {
+    const cands         = [...(cat.candidates || [])].sort((a:any,b:any)=>(b.vote_count||0)-(a.vote_count||0));
+    const totalCatVotes = cands.reduce((s:number,c:any)=>s+(c.vote_count||0),0);
     const topVotes      = cands[0]?.vote_count || 0;
     const isTied        = cands.length > 1 &&
                           cands[0]?.vote_count === cands[1]?.vote_count &&
                           topVotes > 0;
 
-    checkY(50);
+    checkY(52);
 
-    // ── Category Header ──
-    // Left colored bar
-    fill(C.teal);
-    doc.roundedRect(ML, y, 3, 12, 1, 1, "F");
+    // Category header bar
+    fill(C.navy);
+    doc.roundedRect(ML, y, 3, 13, 1, 1, "F");
 
-    // Category number circle
+    // Number circle
     fill(C.slate);
-    doc.circle(ML + 9, y + 6, 5, "F");
+    doc.circle(ML + 9, y + 6.5, 5, "F");
     color(C.white); font("bold", 8);
-    doc.text(String(ci + 1), ML + 9, y + 8, { align: "center" });
+    doc.text(String(ci + 1), ML + 9, y + 8.8, { align: "center" });
 
-    // Category name
-    color(C.dark); font("bold", 12);
-    doc.text(cat.name, ML + 18, y + 5);
+    // Category name — full width, wrapping allowed
+    color(C.dark); font("bold", 11);
+    const catNameLines = doc.splitTextToSize(cat.name, CW - 55);
+    doc.text(catNameLines, ML + 18, y + 5.5);
 
-    // Stats on right
-    color(C.gray); font("normal", 7.5);
-    doc.text(
-      `${cands.length} candidates  |  ${totalCatVotes.toLocaleString()} votes`,
-      W - MR, y + 5, { align: "right" }
-    );
-
-    // Tied/Winner badge
-    if (topVotes > 0) {
-      const badgeLabel = isTied ? "TIED" : "DECIDED";
-      const badgeColor = isTied ? C.green : C.teal;
-      const bw = 18;
-      fill(badgeColor);
-      doc.roundedRect(W - MR - bw, y + 7, bw, 5, 1, 1, "F");
-      color(C.white); font("bold", 5.5);
-      doc.text(badgeLabel, W - MR - bw/2, y + 10.5, { align: "center" });
+    // Group tags on category header
+    if (cat.groups && cat.groups.length > 0) {
+      const groupStr = cat.groups.map((g: any) => g.name).join(", ");
+      color(C.purple); font("normal", 6.5);
+      doc.text(`Groups: ${groupStr}`, ML + 18, y + 11);
+    } else if (cat.is_global === false) {
+      color(C.orange); font("normal", 6.5);
+      doc.text("Group category", ML + 18, y + 11);
+    } else if (sectionLabel) {
+      color(C.teal); font("normal", 6.5);
+      doc.text("General category", ML + 18, y + 11);
     }
 
-    y += 16;
+    // Stats right
+    color(C.gray); font("normal", 7);
+    doc.text(
+      `${cands.length} candidate${cands.length !== 1 ? "s" : ""}  ·  ${totalCatVotes.toLocaleString()} votes`,
+      W - MR, y + 5.5, { align: "right" }
+    );
+
+    // Decided/Tied badge
+    if (topVotes > 0) {
+      const bl    = isTied ? "TIED" : "DECIDED";
+      const bc    = isTied ? C.green : C.teal;
+      fill(bc); doc.roundedRect(W - MR - 20, y + 7.5, 20, 5, 1, 1, "F");
+      color(C.white); font("bold", 5.5);
+      doc.text(bl, W - MR - 10, y + 11, { align: "center" });
+    }
+
+    y += 17;
 
     if (cands.length === 0) {
       color(C.gray); font("normal", 9);
-      doc.text("No candidates recorded.", ML, y);
-      y += 10; return;
+      doc.text("No candidates recorded.", ML, y); y += 10; return;
     }
 
-    // ── Table Header ──
-    fill(C.slate);
-    doc.roundedRect(ML, y, CW, 8, 1, 1, "F");
+    // Table header
+    fill(C.slate); doc.roundedRect(ML, y, CW, 8, 1, 1, "F");
 
+    // Adjusted column widths — more space for name
     const cols = {
-      rank:  { x: ML + 2,   w: 10  },
-      name:  { x: ML + 13,  w: 68  },
-      votes: { x: ML + 82,  w: 22  },
-      share: { x: ML + 105, w: 22  },
-      bar:   { x: ML + 128, w: CW - 128 - 1 },
+      rank:  { x: ML + 2,   w: 9   },
+      name:  { x: ML + 13,  w: 80  },  // wider name column
+      votes: { x: ML + 95,  w: 22  },
+      share: { x: ML + 119, w: 20  },
+      bar:   { x: ML + 141, w: CW - 141 - 1 },
     };
 
-    color(C.white); font("bold", 7.5);
-    doc.text("#",        cols.rank.x  + cols.rank.w/2,  y + 5.5, { align: "center" });
-    doc.text("CANDIDATE",cols.name.x,                   y + 5.5);
-    doc.text("VOTES",    cols.votes.x + cols.votes.w/2, y + 5.5, { align: "center" });
-    doc.text("SHARE",    cols.share.x + cols.share.w/2, y + 5.5, { align: "center" });
-    doc.text("PROGRESS", cols.bar.x   + cols.bar.w/2,   y + 5.5, { align: "center" });
+    color(C.white); font("bold", 7);
+    doc.text("#",         cols.rank.x  + cols.rank.w/2,  y + 5.5, { align: "center" });
+    doc.text("CANDIDATE", cols.name.x,                   y + 5.5);
+    doc.text("VOTES",     cols.votes.x + cols.votes.w/2, y + 5.5, { align: "center" });
+    doc.text("SHARE",     cols.share.x + cols.share.w/2, y + 5.5, { align: "center" });
+    doc.text("PROGRESS",  cols.bar.x   + cols.bar.w/2,   y + 5.5, { align: "center" });
     y += 8;
 
-    // ── Candidate Rows ──
     cands.forEach((c: any, i: number) => {
       checkY(11);
-
       const pct    = totalCatVotes > 0 ? (c.vote_count / totalCatVotes * 100) : 0;
       const isLead = c.vote_count === topVotes && topVotes > 0;
       const rowH   = 10;
 
-      // Row background
-      if (isLead && !isTied) {
-        fill(C.goldLight);
-      } else if (isLead && isTied) {
-        fill(C.greenLight);
-      } else {
-        fill(i % 2 === 0 ? C.white : C.light);
-      }
+      // Row bg
+      if (isLead && !isTied)      fill(C.goldLight);
+      else if (isLead && isTied)  fill(C.greenLight);
+      else                        fill(i % 2 === 0 ? C.white : C.light);
       doc.rect(ML, y, CW, rowH, "F");
 
-      // Left accent for leader
+      // Leader accent
       if (isLead) {
         fill(isTied ? C.green : C.gold);
         doc.rect(ML, y, 2, rowH, "F");
@@ -283,19 +287,19 @@ export function exportResultsPDF(event: any) {
 
       // Rank
       if (isLead && !isTied) {
-        fill(C.gold);
-        doc.circle(cols.rank.x + cols.rank.w/2, y + rowH/2, 3.5, "F");
+        fill(C.gold); doc.circle(cols.rank.x + cols.rank.w/2, y + rowH/2, 3.5, "F");
         color(C.white); font("bold", 7);
-        doc.text("1", cols.rank.x + cols.rank.w/2, y + rowH/2 + 2, { align: "center" });
+        doc.text("1", cols.rank.x + cols.rank.w/2, y + rowH/2 + 2.2, { align: "center" });
       } else {
         color(C.gray); font("normal", 8);
         doc.text(String(i+1), cols.rank.x + cols.rank.w/2, y + rowH/2 + 2.5, { align: "center" });
       }
 
-      // Name
+      // Name — truncate to fit without wrapping
       color(isLead && !isTied ? "#92400e" : C.dark);
       font(isLead ? "bold" : "normal", 8.5);
-      doc.text(c.name, cols.name.x, y + rowH/2 + 2.5, { maxWidth: cols.name.w - 2 });
+      const nameStr = doc.splitTextToSize(c.name, cols.name.w - 2)[0];
+      doc.text(nameStr, cols.name.x, y + rowH/2 + 2.5);
 
       // Votes
       color(C.dark); font("normal", 8.5);
@@ -316,96 +320,146 @@ export function exportResultsPDF(event: any) {
       fill(C.border); doc.roundedRect(bx, by, bw, bh, 1, 1, "F");
       const fw = bw * pct / 100;
       if (fw > 0.5) {
-        fill(isLead && !isTied ? C.gold : isTied && isLead ? C.green : C.teal);
+        fill(isLead && !isTied ? C.gold : isLead && isTied ? C.green : C.navy);
         doc.roundedRect(bx, by, fw, bh, 1, 1, "F");
       }
 
-      // Row bottom border
       stroke(C.border); doc.setLineWidth(0.15);
       doc.line(ML, y + rowH, W - MR, y + rowH);
       y += rowH;
     });
 
-    // ── Winner / Tie Callout ──
+    // Winner callout
     if (topVotes > 0) {
-      checkY(14);
-      y += 3;
-      const winPct    = totalCatVotes > 0 ? (topVotes / totalCatVotes * 100).toFixed(1) : "0.0";
-      const bgColor   = isTied ? C.greenLight : C.goldLight;
-      const acColor   = isTied ? C.green      : C.gold;
+      checkY(14); y += 3;
+      const winPct  = totalCatVotes > 0 ? (topVotes / totalCatVotes * 100).toFixed(1) : "0.0";
+      const bgColor = isTied ? C.greenLight : C.goldLight;
+      const acColor = isTied ? C.green      : C.gold;
       const winnerNames = isTied
-        ? cands.filter((c:any) => c.vote_count === topVotes).map((c:any) => c.name).join(" & ")
+        ? cands.filter((c:any)=>c.vote_count===topVotes).map((c:any)=>c.name).join(" & ")
         : cands[0].name;
       const winText = isTied
         ? `TIED: ${winnerNames} — ${topVotes.toLocaleString()} votes each`
         : `WINNER: ${winnerNames} — ${topVotes.toLocaleString()} votes (${winPct}%)`;
 
-      fill(bgColor);
-      doc.roundedRect(ML, y, CW, 10, 2, 2, "F");
-      fill(acColor);
-      doc.roundedRect(ML, y, 3, 10, 1, 1, "F");
+      fill(bgColor); doc.roundedRect(ML, y, CW, 10, 2, 2, "F");
+      fill(acColor); doc.roundedRect(ML, y, 3, 10, 1, 1, "F");
       stroke(acColor); doc.setLineWidth(0.3);
       doc.roundedRect(ML, y, CW, 10, 2, 2, "S");
-
       color(C.dark); font("bold", 8.5);
       doc.text(winText, ML + 7, y + 6.5, { maxWidth: CW - 10 });
       y += 14;
     } else {
-      y += 6;
+      y += 5;
     }
 
-    // spacing between categories
-    y += 4;
-  });
+    y += 5;
+  };
 
-  // ══════════════════════════════════════════════════════════
-  // SUMMARY SECTION
-  // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+  // RENDER CATEGORIES
+  // ══════════════════════════════════════════════════════════════════════════
+
+  if (isOrg && (globalCats.length > 0 || groupCats.length > 0)) {
+
+    // ── General Categories section ──
+    if (globalCats.length > 0) {
+      checkY(16);
+      // Section divider
+      fill(C.navy); doc.roundedRect(ML, y, CW, 10, 2, 2, "F");
+      fill(C.orange); doc.roundedRect(ML, y, 4, 10, 2, 2, "F");
+      color(C.white); font("bold", 9);
+      doc.text("GENERAL CATEGORIES", ML + 10, y + 7);
+      color(C.grayLight); font("normal", 7);
+      doc.text(`${globalCats.length} categor${globalCats.length !== 1 ? "ies" : "y"} — open to all voters`, W - MR, y + 7, { align: "right" });
+      y += 14;
+
+      globalCats.forEach((cat: any, ci: number) => drawCategory(cat, ci, "general"));
+    }
+
+    // ── Group Categories section ──
+    if (groupCats.length > 0) {
+      checkY(16);
+      fill(C.purple); doc.roundedRect(ML, y, CW, 10, 2, 2, "F");
+      fill(C.orange); doc.roundedRect(ML, y, 4, 10, 2, 2, "F");
+      color(C.white); font("bold", 9);
+      doc.text("GROUP CATEGORIES", ML + 10, y + 7);
+      color(C.purpleLight); font("normal", 7);
+      doc.text(`${groupCats.length} categor${groupCats.length !== 1 ? "ies" : "y"} — specific to voter groups`, W - MR, y + 7, { align: "right" });
+      y += 14;
+
+      groupCats.forEach((cat: any, ci: number) => drawCategory(cat, ci, "group"));
+    }
+
+  } else {
+    // Standard election — render all categories normally
+    categories.forEach((cat: any, ci: number) => drawCategory(cat, ci));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SUMMARY TABLE
+  // ══════════════════════════════════════════════════════════════════════════
   checkY(40);
   hline(y, C.border); y += 8;
 
-  fill(C.slate);
-  doc.roundedRect(ML, y, CW, 9, 2, 2, "F");
+  fill(C.slate); doc.roundedRect(ML, y, CW, 9, 2, 2, "F");
   color(C.white); font("bold", 10);
   doc.text("RESULTS SUMMARY", ML + CW/2, y + 6.5, { align: "center" });
   y += 13;
 
-  // Summary table
-  const summaryRows: any[] = [];
-  categories.forEach((cat: any) => {
-    const cands     = [...(cat.candidates||[])].sort((a:any,b:any)=>(b.vote_count||0)-(a.vote_count||0));
-    const total     = cands.reduce((s:number,c:any)=>s+(c.vote_count||0),0);
-    const topV      = cands[0]?.vote_count || 0;
-    const isTied    = cands.length > 1 && cands[0]?.vote_count === cands[1]?.vote_count && topV > 0;
-    const winPct    = total > 0 ? (topV / total * 100).toFixed(1) : "0.0";
-    const winner    = isTied
+  // Build summary rows
+  const buildSummaryRows = (cats: any[]) => cats.map((cat: any) => {
+    const cands  = [...(cat.candidates||[])].sort((a:any,b:any)=>(b.vote_count||0)-(a.vote_count||0));
+    const total  = cands.reduce((s:number,c:any)=>s+(c.vote_count||0),0);
+    const topV   = cands[0]?.vote_count || 0;
+    const isTied = cands.length > 1 && cands[0]?.vote_count === cands[1]?.vote_count && topV > 0;
+    const winPct = total > 0 ? (topV / total * 100).toFixed(1) : "0.0";
+    const winner = isTied
       ? `TIED: ${cands.filter((c:any)=>c.vote_count===topV).map((c:any)=>c.name).join(" & ")}`
       : (cands[0]?.name || "N/A");
-    summaryRows.push({ cat: cat.name, winner, votes: topV, pct: winPct, total, tied: isTied });
+    return { cat: cat.name, winner, votes: topV, pct: winPct, total, tied: isTied, isGlobal: cat.is_global !== false };
   });
 
-  // Summary header
+  const allSummaryRows = buildSummaryRows(categories);
+
+  // Summary header — adjusted columns
   fill(C.dark); doc.rect(ML, y, CW, 7, "F");
-  color(C.white); font("bold", 7.5);
-  const sc = [ML+2, ML+52, ML+112, ML+137, ML+155];
-  ["CATEGORY","WINNER / OUTCOME","TOP VOTES","SHARE","TOTAL"].forEach((h,i) => {
-    doc.text(h, sc[i], y+5);
-  });
+  color(C.white); font("bold", 7);
+  // Cols: category(50), type(18), winner(60), votes(18), share(16), total(16)
+  const sc = { cat: ML+2, type: ML+52, win: ML+72, votes: ML+134, share: ML+152, total: ML+166 };
+  doc.text("CATEGORY",  sc.cat,   y+5);
+  if (isOrg) doc.text("TYPE", sc.type, y+5);
+  doc.text("WINNER / OUTCOME", sc.win,   y+5);
+  doc.text("VOTES",     sc.votes, y+5);
+  doc.text("SHARE",     sc.share, y+5);
+  doc.text("TOTAL",     sc.total, y+5);
   y += 7;
 
-  summaryRows.forEach((row, i) => {
+  allSummaryRows.forEach((row, i) => {
     checkY(9);
     fill(i % 2 === 0 ? C.white : C.light);
     doc.rect(ML, y, CW, 8, "F");
-    color(C.gray);  font("normal", 7.5); doc.text(row.cat,             sc[0], y+5.5, { maxWidth: 48 });
-    color(row.tied ? C.green : C.dark); font(row.tied ? "normal" : "bold", 7.5);
-    doc.text(row.winner, sc[1], y+5.5, { maxWidth: 58 });
-    color(C.dark); font("normal", 7.5);
-    doc.text(String(row.votes), sc[2]+10, y+5.5, { align: "center" });
-    color(row.tied ? C.green : C.gold); font("bold", 7.5);
-    doc.text(`${row.pct}%`, sc[3]+9, y+5.5, { align: "center" });
-    color(C.gray); font("normal", 7.5);
-    doc.text(String(row.total), sc[4]+10, y+5.5, { align: "center" });
+
+    color(C.gray);  font("normal", 7);
+    doc.text(doc.splitTextToSize(row.cat, 48)[0], sc.cat, y+5.5);
+
+    if (isOrg) {
+      color(row.isGlobal ? C.navy : C.purple); font("bold", 6);
+      doc.text(row.isGlobal ? "GENERAL" : "GROUP", sc.type, y+5.5);
+    }
+
+    color(row.tied ? C.green : C.dark); font(row.tied ? "normal" : "bold", 7);
+    doc.text(doc.splitTextToSize(row.winner, 58)[0], sc.win, y+5.5);
+
+    color(C.dark); font("normal", 7);
+    doc.text(String(row.votes), sc.votes+8, y+5.5, { align: "center" });
+
+    color(row.tied ? C.green : C.gold); font("bold", 7);
+    doc.text(`${row.pct}%`, sc.share+7, y+5.5, { align: "center" });
+
+    color(C.gray); font("normal", 7);
+    doc.text(String(row.total), sc.total+10, y+5.5, { align: "center" });
+
     stroke(C.border); doc.setLineWidth(0.15);
     doc.line(ML, y+8, W-MR, y+8);
     y += 8;
@@ -413,24 +467,19 @@ export function exportResultsPDF(event: any) {
 
   y += 10;
 
-  // ── Confidential notice ──
+  // ── Confidential notice ──────────────────────────────────────────────────
   checkY(16);
-  fill(C.light);
-  doc.roundedRect(ML, y, CW, 12, 2, 2, "F");
+  fill(C.light); doc.roundedRect(ML, y, CW, 12, 2, 2, "F");
   color(C.gray); font("normal", 7.5);
   doc.text(
     "This document is an official record generated by CelerVote. Results are encrypted and tamper-proof.",
     W/2, y + 5, { align: "center", maxWidth: CW - 10 }
   );
   color(C.grayLight); font("normal", 7);
-  doc.text(
-    "Confidential — For authorized use only",
-    W/2, y + 10, { align: "center" }
-  );
+  doc.text("Confidential — For authorised use only", W/2, y + 10, { align: "center" });
 
   drawFooter();
 
-  // ── Save ──
   const filename = `${event.slug || "results"}-report-${new Date().toISOString().slice(0,10)}.pdf`;
   doc.save(filename);
 }
