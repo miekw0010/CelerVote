@@ -10,7 +10,7 @@ import { Footer } from "@/components/Footer";
 
 const NAVY   = "#002856";
 const ORANGE = "#e87200";
-const WHATSAPP = "+233592377833";
+const WHATSAPP = "+233501802950";
 const EMAIL    = "celervote@gmail.com";
 
 const whatsappUrl = (msg: string) =>
@@ -199,7 +199,7 @@ export default function ServicesPage() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a href={whatsappUrl("Hi! I'd like to discuss a service with you.")} target="_blank" rel="noopener noreferrer">
                 <Button size="lg" className="bg-green-500 hover:bg-green-600 text-white gap-2 h-14 px-8 rounded-full text-lg" style={{ fontFamily: M }}>
-                  <MessageCircle className="w-5 h-5" /> +233 59 237 7833
+                  <MessageCircle className="w-5 h-5" /> +233 50 180 2950
                 </Button>
               </a>
               <a href={emailUrl("Service Enquiry — CelerVote")} target="_blank" rel="noopener noreferrer">

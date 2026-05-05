@@ -198,7 +198,7 @@ export const SecurityPage = () => (
 
       <div className="glass-card p-6 border-secondary/20 bg-secondary/5">
         <p className="text-sm text-muted-foreground">
-          Found a security vulnerability? Please report it responsibly to <a href="mailto:security@celervote.com" className="text-secondary hover:underline">security@celervote.com</a>. We take all reports seriously and will respond within 48 hours.
+          Found a security vulnerability? Please report it responsibly to <a href="mailto:celervote@gmail.com" className="text-secondary hover:underline">security@celervote.com</a>. We take all reports seriously and will respond within 48 hours.
         </p>
       </div>
     </div>
@@ -225,8 +225,8 @@ export const ContactPage = () => {
 
       <div className="grid md:grid-cols-2 gap-6 mb-8">
         {[
-          { icon: Mail,  title: "Email Us",      value: "support@celervote.com",  desc: "We respond within 24 hours" },
-          { icon: Phone, title: "WhatsApp",       value: "+233 XX XXX XXXX",      desc: "Mon–Fri, 9am–6pm GMT" },
+          { icon: Mail,  title: "Email Us",      value: "celervote@gmail.com",  desc: "We respond within 24 hours" },
+          { icon: Phone, title: "WhatsApp",       value: "+233 50 180 2950",      desc: "Mon–Fri, 9am–6pm GMT" },
         ].map(item => (
           <div key={item.title} className="glass-card p-5 flex items-center gap-4">
             <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center flex-shrink-0">
