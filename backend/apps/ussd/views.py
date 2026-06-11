@@ -30,7 +30,7 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-USSD_SESSION_TIMEOUT = 120  # seconds
+USSD_SESSION_TIMEOUT = 300  # seconds — 5 min, real phone sessions take longer
 
 
 def get_session(session_id: str) -> dict:
@@ -73,15 +73,13 @@ class USSDView(View):
 
         logger.info(f'USSD Nalo | session={session_id} | msisdn={msisdn} | userdata={userdata!r} | msgtype={msgtype} | network={network}')
 
-        is_new = (msgtype is True or msgtype == 'true' or msgtype == 1)
+        # Treat as new session only when USERDATA is empty
+        # Do NOT rely on MSGTYPE — some providers send true on every request
+        state = get_session(session_id)
 
-        if is_new and not userdata:
+        if not userdata or not state:
             clear_session(session_id)
             return self._show_events(userid, msisdn, session_id)
-
-        state = get_session(session_id)
-        if not state:
-            return nalo_end(userid, msisdn, 'Session expired. Please dial again.')
 
         level = state.get('level', 0)
 
