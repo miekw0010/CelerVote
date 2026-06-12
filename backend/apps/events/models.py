@@ -187,6 +187,8 @@ class Candidate(models.Model):
     video_url   = models.URLField(blank=True)
     order       = models.IntegerField(default=0)
     is_active   = models.BooleanField(default=True)
+    code        = models.CharField(max_length=10, blank=True,
+                                   help_text='Auto-generated short code e.g. AB01')
     vote_count  = models.IntegerField(default=0)
     vote_percentage = models.FloatField(default=0.0)
     extra_info  = models.JSONField(default=dict, blank=True)
@@ -198,3 +200,21 @@ class Candidate(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.category.name})'
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self._generate_code()
+        super().save(*args, **kwargs)
+
+    def _generate_code(self):
+        import string
+        import random
+        prefix = ''.join(c for c in self.category.name.upper() if c.isalpha())[:2] or 'CD'
+        for _ in range(30):
+            suffix = ''.join(random.choices(string.digits, k=2))
+            code = f"{prefix}{suffix}"
+            if not Candidate.objects.filter(
+                category=self.category, code=code
+            ).exists():
+                return code
+        return f"CD{random.randint(10,99)}"
