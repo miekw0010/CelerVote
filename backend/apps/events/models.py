@@ -13,6 +13,13 @@ def generate_voting_code():
     return ''.join(random.choices(chars, k=6))
 
 
+def generate_candidate_code():
+    chars = (string.ascii_uppercase + string.digits).translate(
+        str.maketrans('', '', '01OILZ')
+    )
+    return ''.join(random.choices(chars, k=6))
+
+
 class Event(models.Model):
     class Status(models.TextChoices):
         DRAFT     = 'draft',     'Draft'
@@ -187,10 +194,12 @@ class Candidate(models.Model):
     video_url   = models.URLField(blank=True)
     order       = models.IntegerField(default=0)
     is_active   = models.BooleanField(default=True)
-    code        = models.CharField(max_length=10, blank=True,
-                                   help_text='Auto-generated short code e.g. AB01')
     vote_count  = models.IntegerField(default=0)
     vote_percentage = models.FloatField(default=0.0)
+    code        = models.CharField(
+                    max_length=6, blank=True, unique=True,
+                    help_text='Auto-generated 6-char unique vote code e.g. AB3X9K'
+                  )
     extra_info  = models.JSONField(default=dict, blank=True)
     created_at  = models.DateTimeField(auto_now_add=True)
 
@@ -199,22 +208,16 @@ class Candidate(models.Model):
         ordering = ['order', 'name']
 
     def __str__(self):
-        return f'{self.name} ({self.category.name})'
+        return f'{self.name} ({self.category.name}) — #{self.code}'
 
     def save(self, *args, **kwargs):
         if not self.code:
-            self.code = self._generate_code()
+            self.code = self._gen_code()
         super().save(*args, **kwargs)
 
-    def _generate_code(self):
-        import string
-        import random
-        prefix = ''.join(c for c in self.category.name.upper() if c.isalpha())[:2] or 'CD'
-        for _ in range(30):
-            suffix = ''.join(random.choices(string.digits, k=2))
-            code = f"{prefix}{suffix}"
-            if not Candidate.objects.filter(
-                category=self.category, code=code
-            ).exists():
+    def _gen_code(self):
+        for _ in range(50):
+            code = generate_candidate_code()
+            if not Candidate.objects.filter(code=code).exists():
                 return code
-        return f"CD{random.randint(10,99)}"
+        raise ValueError('Could not generate unique candidate code after 50 attempts')

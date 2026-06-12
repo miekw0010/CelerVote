@@ -1,23 +1,14 @@
 """
 USSD Handler — Nalo Solutions
-Dial your shortcode from any phone (no internet needed)
+────────────────────────────────────────────────────────────────
+Two ways to vote via USSD:
 
-Nalo sends JSON POST requests with:
-  USERID    — Nalo-assigned user ID
-  MSISDN    — caller's phone number e.g. 233XXXXXXXXX
-  USERDATA  — what the user typed (empty string on first dial)
-  MSGTYPE   — true = new/first session, false = continuing session
-  SESSIONID — unique session ID
-  NETWORK   — MTN, Vodafone, AirtelTigo etc.
+  QUICK VOTE  — voter dials, enters 6-char candidate code, confirms → done
+  BROWSE VOTE — voter selects event → category → candidate → confirms → done
 
-We respond with JSON:
-  USERID    — same as received
-  MSISDN    — same as received
-  MSG       — message to display on phone (max 182 chars per screen)
-  MSGTYPE   — true = continue session (show menu), false = end session
-
-Menu Flow:
-  Dial code → List events → List categories → List candidates → Confirm → Done
+Nalo POST fields:  USERID, MSISDN, USERDATA, MSGTYPE, SESSIONID, NETWORK
+Response fields:   USERID, MSISDN, MSG, MSGTYPE (true=continue, false=end)
+────────────────────────────────────────────────────────────────
 """
 import json
 import logging
@@ -30,31 +21,24 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-USSD_SESSION_TIMEOUT = 300  # seconds — 5 min, real phone sessions take longer
+SESSION_TTL = 300  # 5 minutes
 
 
-def get_session(session_id: str) -> dict:
-    return cache.get(f'ussd_nalo:{session_id}', {})
+# ── Session helpers ───────────────────────────────────────────────────────────
+def gs(sid):       return cache.get(f'nalo:{sid}', {})
+def ss(sid, data): cache.set(f'nalo:{sid}', data, timeout=SESSION_TTL)
+def cs(sid):       cache.delete(f'nalo:{sid}')
 
 
-def set_session(session_id: str, state: dict):
-    cache.set(f'ussd_nalo:{session_id}', state, timeout=USSD_SESSION_TIMEOUT)
+def cont(uid, msisdn, msg):
+    return JsonResponse({"USERID": uid, "MSISDN": msisdn, "MSG": msg, "MSGTYPE": True})
 
 
-def clear_session(session_id: str):
-    cache.delete(f'ussd_nalo:{session_id}')
+def end(uid, msisdn, msg):
+    return JsonResponse({"USERID": uid, "MSISDN": msisdn, "MSG": msg, "MSGTYPE": False})
 
 
-def nalo_continue(userid, msisdn, msg):
-    """Keep the USSD session open."""
-    return JsonResponse({"USERID": userid, "MSISDN": msisdn, "MSG": msg, "MSGTYPE": True})
-
-
-def nalo_end(userid, msisdn, msg):
-    """Terminate the USSD session."""
-    return JsonResponse({"USERID": userid, "MSISDN": msisdn, "MSG": msg, "MSGTYPE": False})
-
-
+# ── Main view ─────────────────────────────────────────────────────────────────
 @method_decorator(csrf_exempt, name='dispatch')
 class USSDView(View):
 
@@ -64,181 +48,270 @@ class USSDView(View):
         except Exception:
             body = request.POST.dict()
 
-        userid     = body.get('USERID', '')
+        uid        = body.get('USERID', '')
         msisdn     = body.get('MSISDN', '')
         userdata   = body.get('USERDATA', '').strip()
-        msgtype    = body.get('MSGTYPE', True)
         session_id = body.get('SESSIONID', '')
         network    = body.get('NETWORK', '')
 
-        logger.info(f'USSD Nalo | session={session_id} | msisdn={msisdn} | userdata={userdata!r} | msgtype={msgtype} | network={network}')
+        logger.info(f'NALO | sid={session_id} | msisdn={msisdn} | data={userdata!r} | net={network}')
 
-        # Treat as new session only when USERDATA is empty
-        # Do NOT rely on MSGTYPE — some providers send true on every request
-        state = get_session(session_id)
+        state = gs(session_id)
 
+        # ── New session (no userdata = first dial) ────────────────────────
         if not userdata or not state:
-            clear_session(session_id)
-            return self._show_events(userid, msisdn, session_id)
+            cs(session_id)
+            msg = (
+                "Welcome to CelerVote\n"
+                "1. Browse & Vote\n"
+                "2. Quick Vote (enter code)"
+            )
+            ss(session_id, {'level': 'home'})
+            return cont(uid, msisdn, msg)
 
-        level = state.get('level', 0)
+        level = state.get('level')
 
-        if level == 0:
-            return self._handle_event_choice(userid, msisdn, session_id, state, userdata)
-        elif level == 1:
-            return self._handle_category_choice(userid, msisdn, session_id, state, userdata)
-        elif level == 2:
-            return self._handle_candidate_choice(userid, msisdn, session_id, state, userdata)
-        elif level == 3:
-            return self._handle_confirmation(userid, msisdn, session_id, state, userdata, msisdn)
+        # ── HOME MENU ─────────────────────────────────────────────────────
+        if level == 'home':
+            if userdata == '1':
+                return self._show_events(uid, msisdn, session_id, state)
+            elif userdata == '2':
+                ss(session_id, {'level': 'quick_code'})
+                return cont(uid, msisdn, "Enter the 6-character\ncandidate code:")
+            else:
+                return end(uid, msisdn, "Invalid choice. Dial again.")
 
-        return nalo_end(userid, msisdn, 'Session expired. Please dial again.')
+        # ── QUICK VOTE: code entry ─────────────────────────────────────────
+        if level == 'quick_code':
+            return self._handle_quick_code(uid, msisdn, session_id, state, userdata)
 
-    def _show_events(self, userid, msisdn, session_id):
-        from apps.events.models import Event
-        events = list(Event.objects.filter(status='active').order_by('-created_at')[:5])
-        if not events:
-            return nalo_end(userid, msisdn, 'No active voting events at this time.')
+        # ── QUICK VOTE: confirmation ───────────────────────────────────────
+        if level == 'quick_confirm':
+            return self._handle_quick_confirm(uid, msisdn, session_id, state, userdata, msisdn)
 
-        msg = 'Welcome to CelerVote\nSelect an event:\n'
-        event_map = {}
-        for i, e in enumerate(events, 1):
-            msg += f'{i}. {e.title}\n'
-            event_map[str(i)] = str(e.id)
+        # ── BROWSE FLOW ───────────────────────────────────────────────────
+        if level == 'events':
+            return self._handle_event_choice(uid, msisdn, session_id, state, userdata)
+        if level == 'categories':
+            return self._handle_category_choice(uid, msisdn, session_id, state, userdata)
+        if level == 'candidates':
+            return self._handle_candidate_choice(uid, msisdn, session_id, state, userdata)
+        if level == 'confirm':
+            return self._handle_confirmation(uid, msisdn, session_id, state, userdata, msisdn)
 
-        set_session(session_id, {'level': 0, 'event_map': event_map})
-        return nalo_continue(userid, msisdn, msg.strip())
+        return end(uid, msisdn, "Session expired. Dial again.")
 
-    def _handle_event_choice(self, userid, msisdn, session_id, state, userdata):
-        event_map = state.get('event_map', {})
-        if userdata not in event_map:
-            return nalo_end(userid, msisdn, 'Invalid selection. Please dial again.')
-
-        from apps.events.models import Event, Category
-        try:
-            event = Event.objects.get(id=event_map[userdata])
-        except Event.DoesNotExist:
-            return nalo_end(userid, msisdn, 'Event not found.')
-
-        if event.is_paid:
-            return nalo_end(userid, msisdn, f'{event.title}\nThis event requires payment.\nVote via celervote.com')
-
-        categories = list(Category.objects.filter(event=event, is_active=True)[:5])
-        if not categories:
-            return nalo_end(userid, msisdn, 'No categories available.')
-
-        msg = f'{event.title}\nSelect category:\n'
-        cat_map = {}
-        for i, c in enumerate(categories, 1):
-            msg += f'{i}. {c.name}\n'
-            cat_map[str(i)] = str(c.id)
-
-        state.update({'level': 1, 'event_id': str(event.id), 'cat_map': cat_map})
-        set_session(session_id, state)
-        return nalo_continue(userid, msisdn, msg.strip())
-
-    def _handle_category_choice(self, userid, msisdn, session_id, state, userdata):
-        cat_map = state.get('cat_map', {})
-        if userdata not in cat_map:
-            return nalo_end(userid, msisdn, 'Invalid selection. Please dial again.')
-
-        from apps.events.models import Category, Candidate
-        try:
-            category = Category.objects.get(id=cat_map[userdata])
-        except Category.DoesNotExist:
-            return nalo_end(userid, msisdn, 'Category not found.')
-
-        candidates = list(Candidate.objects.filter(category=category, is_active=True)[:8])
-        if not candidates:
-            return nalo_end(userid, msisdn, 'No candidates available.')
-
-        msg = f'{category.name}\nSelect candidate:\n'
-        cand_map = {}
-        for i, cand in enumerate(candidates, 1):
-            code = f' [{cand.code}]' if getattr(cand, 'code', '') else ''
-            msg += f'{i}. {cand.name}{code}\n'
-            cand_map[str(i)] = str(cand.id)
-
-        state.update({'level': 2, 'cat_id': str(category.id), 'cand_map': cand_map})
-        set_session(session_id, state)
-        return nalo_continue(userid, msisdn, msg.strip())
-
-    def _handle_candidate_choice(self, userid, msisdn, session_id, state, userdata):
-        cand_map = state.get('cand_map', {})
-        if userdata not in cand_map:
-            return nalo_end(userid, msisdn, 'Invalid selection. Please dial again.')
+    # ── QUICK VOTE: lookup candidate by code ─────────────────────────────────
+    def _handle_quick_code(self, uid, msisdn, session_id, state, userdata):
+        code = userdata.upper().strip()
+        if len(code) != 6:
+            return end(uid, msisdn, "Invalid code length.\nCodes are 6 characters.\nDial again.")
 
         from apps.events.models import Candidate
         try:
-            candidate = Candidate.objects.get(id=cand_map[userdata])
+            candidate = Candidate.objects.select_related(
+                'category__event'
+            ).get(code=code, is_active=True)
         except Candidate.DoesNotExist:
-            return nalo_end(userid, msisdn, 'Candidate not found.')
+            return end(uid, msisdn, f"Code {code} not found.\nCheck the code and dial again.")
+        except Candidate.MultipleObjectsReturned:
+            return end(uid, msisdn, "Code conflict. Please vote via the website: celervote.com")
 
-        state.update({'level': 3, 'cand_id': str(candidate.id), 'cand_name': candidate.name})
-        set_session(session_id, state)
+        event    = candidate.category.event
+        category = candidate.category
 
-        msg = f'Confirm your vote:\n{candidate.name}\n\n1. Confirm\n2. Cancel'
-        return nalo_continue(userid, msisdn, msg)
+        if event.status != 'active':
+            return end(uid, msisdn, f"{event.title}\nVoting is not currently active.")
 
-    def _handle_confirmation(self, userid, msisdn, session_id, state, userdata, phone):
+        if event.is_paid:
+            return end(uid, msisdn, f"{event.title}\nThis event requires payment.\nVote via: celervote.com")
+
+        state.update({
+            'level':      'quick_confirm',
+            'event_id':   str(event.id),
+            'cat_id':     str(category.id),
+            'cand_id':    str(candidate.id),
+            'cand_name':  candidate.name,
+            'cand_code':  candidate.code,
+            'event_name': event.title,
+            'cat_name':   category.name,
+        })
+        ss(session_id, state)
+
+        msg = (
+            f"Confirm your vote:\n"
+            f"Event: {event.title}\n"
+            f"Category: {category.name}\n"
+            f"Candidate: {candidate.name}\n"
+            f"Code: #{code}\n\n"
+            f"1. Confirm\n"
+            f"2. Cancel"
+        )
+        return cont(uid, msisdn, msg)
+
+    def _handle_quick_confirm(self, uid, msisdn, session_id, state, userdata, phone):
         if userdata == '2':
-            clear_session(session_id)
-            return nalo_end(userid, msisdn, 'Vote cancelled. Thank you.')
-
+            cs(session_id)
+            return end(uid, msisdn, "Vote cancelled.\nThank you.")
         if userdata != '1':
-            return nalo_end(userid, msisdn, 'Invalid input. Please dial again.')
+            return end(uid, msisdn, "Invalid input. Dial again.")
 
+        return self._cast_vote(uid, msisdn, session_id, state, phone)
+
+    # ── BROWSE FLOW ───────────────────────────────────────────────────────────
+    def _show_events(self, uid, msisdn, session_id, state):
+        from apps.events.models import Event
+        events = list(Event.objects.filter(status='active').order_by('-created_at')[:5])
+        if not events:
+            return end(uid, msisdn, "No active events right now.\nTry again later.")
+
+        msg = "Select an event:\n"
+        emap = {}
+        for i, e in enumerate(events, 1):
+            msg += f"{i}. {e.title}\n"
+            emap[str(i)] = str(e.id)
+
+        state.update({'level': 'events', 'emap': emap})
+        ss(session_id, state)
+        return cont(uid, msisdn, msg.strip())
+
+    def _handle_event_choice(self, uid, msisdn, session_id, state, userdata):
+        emap = state.get('emap', {})
+        if userdata not in emap:
+            return end(uid, msisdn, "Invalid choice. Dial again.")
+
+        from apps.events.models import Event, Category
+        try:
+            event = Event.objects.get(id=emap[userdata])
+        except Event.DoesNotExist:
+            return end(uid, msisdn, "Event not found.")
+
+        if event.is_paid:
+            return end(uid, msisdn, f"{event.title}\nRequires payment.\nVote via: celervote.com")
+
+        cats = list(Category.objects.filter(event=event, is_active=True)[:5])
+        if not cats:
+            return end(uid, msisdn, "No categories available.")
+
+        msg = f"{event.title}\nSelect category:\n"
+        cmap = {}
+        for i, c in enumerate(cats, 1):
+            msg += f"{i}. {c.name}\n"
+            cmap[str(i)] = str(c.id)
+
+        state.update({'level': 'categories', 'event_id': str(event.id), 'event_name': event.title, 'cmap': cmap})
+        ss(session_id, state)
+        return cont(uid, msisdn, msg.strip())
+
+    def _handle_category_choice(self, uid, msisdn, session_id, state, userdata):
+        cmap = state.get('cmap', {})
+        if userdata not in cmap:
+            return end(uid, msisdn, "Invalid choice. Dial again.")
+
+        from apps.events.models import Category, Candidate
+        try:
+            cat = Category.objects.get(id=cmap[userdata])
+        except Category.DoesNotExist:
+            return end(uid, msisdn, "Category not found.")
+
+        cands = list(Candidate.objects.filter(category=cat, is_active=True)[:8])
+        if not cands:
+            return end(uid, msisdn, "No candidates available.")
+
+        msg = f"{cat.name}\nSelect candidate:\n"
+        candmap = {}
+        for i, cand in enumerate(cands, 1):
+            code = f" [{cand.code}]" if cand.code else ""
+            msg += f"{i}. {cand.name}{code}\n"
+            candmap[str(i)] = str(cand.id)
+
+        state.update({
+            'level': 'candidates', 'cat_id': str(cat.id),
+            'cat_name': cat.name, 'candmap': candmap
+        })
+        ss(session_id, state)
+        return cont(uid, msisdn, msg.strip())
+
+    def _handle_candidate_choice(self, uid, msisdn, session_id, state, userdata):
+        candmap = state.get('candmap', {})
+        if userdata not in candmap:
+            return end(uid, msisdn, "Invalid choice. Dial again.")
+
+        from apps.events.models import Candidate
+        try:
+            cand = Candidate.objects.get(id=candmap[userdata])
+        except Candidate.DoesNotExist:
+            return end(uid, msisdn, "Candidate not found.")
+
+        state.update({
+            'level': 'confirm', 'cand_id': str(cand.id),
+            'cand_name': cand.name, 'cand_code': cand.code
+        })
+        ss(session_id, state)
+
+        return cont(uid, msisdn, f"Confirm vote:\n{cand.name}\nCode: #{cand.code}\n\n1. Confirm\n2. Cancel")
+
+    def _handle_confirmation(self, uid, msisdn, session_id, state, userdata, phone):
+        if userdata == '2':
+            cs(session_id)
+            return end(uid, msisdn, "Vote cancelled.\nThank you.")
+        if userdata != '1':
+            return end(uid, msisdn, "Invalid input. Dial again.")
+        return self._cast_vote(uid, msisdn, session_id, state, phone)
+
+    # ── Shared vote caster ────────────────────────────────────────────────────
+    def _cast_vote(self, uid, msisdn, session_id, state, phone):
         from apps.events.models import Event, Category, Candidate
+
         try:
             event     = Event.objects.get(id=state.get('event_id'))
             category  = Category.objects.get(id=state.get('cat_id'))
             candidate = Candidate.objects.get(id=state.get('cand_id'))
         except Exception as e:
-            logger.error(f'USSD vote lookup error: {e}')
-            clear_session(session_id)
-            return nalo_end(userid, msisdn, 'Error processing vote. Please try again.')
+            logger.error(f'USSD cast_vote lookup: {e}')
+            cs(session_id)
+            return end(uid, msisdn, "Error processing vote.\nPlease try again.")
 
         from apps.accounts.models import User
-        clean_phone = phone.strip().replace(' ', '')
+        clean = phone.strip().replace(' ', '')
         user, _ = User.objects.get_or_create(
-            phone=clean_phone,
+            phone=clean,
             defaults={
-                'email':       f'{clean_phone.replace("+", "")}@ussd.evoting.local',
-                'name':        clean_phone,
+                'email':       f'{clean.replace("+","")}@ussd.evoting.local',
+                'name':        clean,
                 'is_verified': True,
             }
         )
 
-        class FakeRequest:
+        class FakeReq:
             META = {
-                'REMOTE_ADDR':          '0.0.0.0',
-                'HTTP_USER_AGENT':      f'USSD-Nalo/{clean_phone}',
+                'REMOTE_ADDR': '0.0.0.0',
+                'HTTP_USER_AGENT': f'USSD-Nalo/{clean}',
                 'HTTP_X_FORWARDED_FOR': '',
                 'HTTP_ACCEPT_LANGUAGE': '',
             }
 
-        fake_request      = FakeRequest()
-        fake_request.user = user
+        fake      = FakeReq()
+        fake.user = user
 
         from apps.voting.services import VoteCaster
         try:
-            caster = VoteCaster(event, user, fake_request)
-            result = caster.cast_vote(
+            result = VoteCaster(event, user, fake).cast_vote(
                 category_id=str(category.id),
                 candidate_ids=[str(candidate.id)],
             )
         except Exception as e:
-            logger.error(f'USSD VoteCaster error: {e}')
-            clear_session(session_id)
-            return nalo_end(userid, msisdn, 'Error recording vote. Please try again.')
+            logger.error(f'USSD VoteCaster: {e}')
+            cs(session_id)
+            return end(uid, msisdn, "Error recording vote.\nPlease try again.")
 
-        clear_session(session_id)
+        cs(session_id)
         cand_name = state.get('cand_name', 'Candidate')
 
         if result.get('success'):
-            return nalo_end(userid, msisdn, f'Vote recorded!\nYou voted for {cand_name}.\nThank you for voting!')
+            return end(uid, msisdn, f"Vote recorded! ✓\n{cand_name}\nThank you for voting on CelerVote!")
         else:
-            error = result.get('error', 'Unknown error')
-            if 'already' in error.lower():
-                return nalo_end(userid, msisdn, 'You have already voted in this category.')
-            return nalo_end(userid, msisdn, f'Vote failed: {error}')
+            err = result.get('error', '')
+            if 'already' in err.lower():
+                return end(uid, msisdn, "You already voted\nin this category.")
+            return end(uid, msisdn, f"Vote failed.\n{err}\nTry again.")
