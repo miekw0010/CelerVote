@@ -196,11 +196,11 @@ class Candidate(models.Model):
     is_active   = models.BooleanField(default=True)
     vote_count  = models.IntegerField(default=0)
     vote_percentage = models.FloatField(default=0.0)
+    extra_info  = models.JSONField(default=dict, blank=True)
     code        = models.CharField(
                     max_length=6, blank=True, unique=True,
                     help_text='Auto-generated 6-char unique vote code e.g. AB3X9K'
                   )
-    extra_info  = models.JSONField(default=dict, blank=True)
     created_at  = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -216,8 +216,11 @@ class Candidate(models.Model):
         super().save(*args, **kwargs)
 
     def _gen_code(self):
+        chars = (string.ascii_uppercase + string.digits).translate(
+            str.maketrans('', '', '01OILZ')
+        )
         for _ in range(50):
-            code = generate_candidate_code()
+            code = ''.join(random.choices(chars, k=6))
             if not Candidate.objects.filter(code=code).exists():
                 return code
         raise ValueError('Could not generate unique candidate code after 50 attempts')

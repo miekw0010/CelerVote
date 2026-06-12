@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Users, Plus, Trash2, Loader2, X, ImageIcon, ChevronRight, ArrowLeft, BarChart3, Calendar, Tag, Globe, Edit2 } from "lucide-react";
+import { Users, Plus, Trash2, Loader2, X, ImageIcon, ChevronRight, ArrowLeft, BarChart3, Calendar, Tag, Globe, Edit2, Hash, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -499,11 +499,25 @@ const AdminCandidatesPage = () => {
              {candidates.map((c: any, i: number) => (
                <div key={c.id} className="glass-card p-4 flex items-center gap-3 group">
                  {isSurvey ? <div className="w-9 h-9 rounded-full bg-secondary/10 flex items-center justify-center text-sm font-bold text-secondary flex-shrink-0">{String.fromCharCode(65 + i)}</div>
-                  : c.photo ? <img src={c.photo} alt={c.name} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
-                  : <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-sm font-bold text-secondary flex-shrink-0">{c.name[0]}</div>}
+                  : c.photo ? <img src={c.photo} alt={c.name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0 ring-2 ring-border/30" />
+                  : <div className="w-12 h-12 rounded-xl bg-secondary/10 flex items-center justify-center text-sm font-bold text-secondary flex-shrink-0">{c.name[0]}</div>}
                  <div className="flex-1 min-w-0">
                    <p className="text-sm font-medium truncate">{c.name}</p>
                    {c.description && <p className="text-xs text-muted-foreground truncate">{c.description}</p>}
+                   {!isSurvey && c.code && (
+                     <div className="flex items-center gap-1.5 mt-1">
+                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono font-bold"
+                         style={{ background: "#e8720015", color: "#e87200", border: "1px solid #e8720030" }}>
+                         <Hash className="w-3 h-3" />{c.code}
+                       </span>
+                       <button
+                         onClick={() => { navigator.clipboard.writeText(c.code); }}
+                         className="text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                         title="Copy code">
+                         <Copy className="w-3 h-3" />
+                       </button>
+                     </div>
+                   )}
                  </div>
                  <div className="flex items-center gap-2">
                    <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-muted">{c.vote_count || 0} {isSurvey ? "responses" : "votes"}</span>
@@ -518,7 +532,10 @@ const AdminCandidatesPage = () => {
       {confirmDialog}
       <Dialog open={addOpen} onOpenChange={o => { setAddOpen(o); if (!o) resetModal(); }}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Add {candidateLabel}</DialogTitle></DialogHeader>
+          <DialogHeader>
+              <DialogTitle>Add {candidateLabel}</DialogTitle>
+              <p className="text-xs text-muted-foreground mt-1">A unique 6-digit vote code will be auto-generated on save.</p>
+            </DialogHeader>
           <div className="space-y-3 mt-2">
             {!isSurvey && (
               <div>

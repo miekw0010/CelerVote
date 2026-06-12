@@ -35,9 +35,9 @@ class CandidateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'description', 'photo', 'video_url',
             'order', 'is_active', 'vote_count', 'vote_percentage',
-            'extra_info', 'created_at'
+            'extra_info', 'code', 'created_at'
         ]
-        read_only_fields = ['id', 'vote_count', 'vote_percentage', 'created_at']
+        read_only_fields = ['id', 'vote_count', 'vote_percentage', 'code', 'created_at']
 
 
 class CandidatePublicSerializer(serializers.ModelSerializer):
@@ -49,7 +49,7 @@ class CandidatePublicSerializer(serializers.ModelSerializer):
         model  = Candidate
         fields = [
             'id', 'name', 'description', 'photo', 'video_url',
-            'order', 'is_active', 'vote_count', 'vote_percentage', 'extra_info'
+            'order', 'is_active', 'vote_count', 'vote_percentage', 'extra_info', 'code'
             # ❌ No: created_at (internal detail)
         ]
         read_only_fields = ['id', 'vote_count', 'vote_percentage']
