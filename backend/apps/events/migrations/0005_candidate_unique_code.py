@@ -32,15 +32,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='candidate',
-            name='code',
-            field=models.CharField(
-                max_length=6, blank=True, default='',
-                help_text='Auto-generated 6-char unique vote code e.g. AB3X9K'
-            ),
-        ),
-        migrations.RunPython(assign_codes, migrations.RunPython.noop),
+        # Skip adding the column - it already exists
+        # Just make sure it has the unique constraint
         migrations.AlterField(
             model_name='candidate',
             name='code',
