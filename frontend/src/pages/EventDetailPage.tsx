@@ -5,7 +5,7 @@ import {
   ArrowLeft, Users, Clock, Shield, CheckCircle2, Share2,
   Loader2, Trophy, ChevronRight, Lock, Calendar,
   BarChart2, Zap, Radio, Minus, Plus, AlertCircle,
-  Vote, ListChecks, ClipboardList, RotateCcw, Search,
+  Vote, ListChecks, ClipboardList, RotateCcw, Search, X,
 } from "lucide-react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -230,7 +230,7 @@ function CandidateCard({ candidate, event, isSelected, hasVoted, isWinner, isTie
           )}
         </div>
 
-        {/* Selected overlay */}
+        {/* Selected overlay + X deselect button */}
         {isSelected && !hasVoted && (
           <div className="absolute inset-0 flex items-center justify-center z-10"
             style={{ background: `${ORANGE}25` }}>
@@ -238,6 +238,14 @@ function CandidateCard({ candidate, event, isSelected, hasVoted, isWinner, isTie
               style={{ background: ORANGE }}>
               <CheckCircle2 className="w-6 h-6 text-white" />
             </div>
+            {/* X deselect — top right, stops card click propagation */}
+            <button
+              onClick={e => { e.stopPropagation(); onSelect(); }}
+              className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-110 active:scale-95 z-20"
+              style={{ background: "#fff", color: ORANGE, border: `2px solid ${ORANGE}` }}
+              title="Deselect">
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
       </div>
@@ -321,6 +329,8 @@ const EventDetailPage = () => {
   const [guestPhone, setGuestPhone]                  = useState("");
   const [processingCats, setProcessingCats]          = useState<Set<string>>(new Set());
   const [catSearch, setCatSearch]                    = useState("");
+  // String state for qty input so user can clear and type freely
+  const [qtyInputs, setQtyInputs]                    = useState<Record<string, string>>({});
 
   // Org state
   const [voterRollToken, setVoterRollToken]  = useState<string | null>(null);
@@ -973,7 +983,7 @@ const EventDetailPage = () => {
                       style={{ borderColor: ORANGE + "40", boxShadow: `0 8px 32px ${ORANGE}20` }}>
                       <div className="h-1 w-full" style={{ background: `linear-gradient(90deg,${NAVY},${ORANGE})` }} />
                       <div className="p-3 sm:p-4">
-                        {/* Candidate name */}
+                        {/* Candidate name + X deselect */}
                         <div className="flex items-center gap-2 mb-3">
                           <div className="w-1.5 h-6 rounded-full flex-shrink-0" style={{ background: ORANGE }} />
                           <div className="min-w-0 flex-1">
@@ -982,30 +992,55 @@ const EventDetailPage = () => {
                               {activeCat?.candidates?.find((c: any) => c.id === catSel)?.name}
                             </p>
                           </div>
+                          <button
+                            onClick={() => handleSelectCandidate(activeCat.id, catSel!)}
+                            className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 active:scale-95"
+                            style={{ background: "#fee2e2", color: "#ef4444", border: "1.5px solid #fca5a5" }}
+                            title="Deselect candidate">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                         {/* Controls: qty + pay button */}
                         <div className="flex items-center gap-2 sm:gap-3">
-                          <button onClick={() => setQty(activeCat.id, -1)}
+                          <button onClick={() => {
+                              setQty(activeCat.id, -1);
+                              setQtyInputs(p => ({ ...p, [activeCat.id]: String(Math.max(1, getQty(activeCat.id) - 1)) }));
+                            }}
                             className="w-8 h-8 rounded-lg border flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all flex-shrink-0"
                             style={{ borderColor: "#e5e7eb" }}>
                             <Minus className="w-3.5 h-3.5" />
                           </button>
                           <div className="flex flex-col items-center">
                             <input
-                              type="number" min="1" max="100"
-                              value={getQty(activeCat.id)}
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              value={qtyInputs[activeCat.id] ?? String(getQty(activeCat.id))}
                               onChange={e => {
-                                const v = parseInt(e.target.value) || 1;
-                                setVoteQuantity(p => ({ ...p, [activeCat.id]: Math.max(1, Math.min(100, v)) }));
+                                const raw = e.target.value.replace(/[^0-9]/g, "");
+                                setQtyInputs(p => ({ ...p, [activeCat.id]: raw }));
+                                const v = parseInt(raw);
+                                if (!isNaN(v) && v >= 1) {
+                                  setVoteQuantity(p => ({ ...p, [activeCat.id]: Math.min(100, v) }));
+                                }
                               }}
-                              className="w-14 h-8 text-center font-black text-base border rounded-lg focus:outline-none focus:ring-1"
-                              style={{ borderColor: ORANGE + "60", color: NAVY }}
+                              onBlur={e => {
+                                // On blur: clamp and sync display value
+                                const v = Math.max(1, Math.min(100, parseInt(e.target.value) || 1));
+                                setVoteQuantity(p => ({ ...p, [activeCat.id]: v }));
+                                setQtyInputs(p => ({ ...p, [activeCat.id]: String(v) }));
+                              }}
+                              className="w-14 h-9 text-center font-black text-base border-2 rounded-lg focus:outline-none transition-colors"
+                              style={{ borderColor: ORANGE, color: NAVY }}
                             />
                             <p className="text-xs text-muted-foreground mt-0.5 whitespace-nowrap">
                               {event.currency} {(parseFloat(event.price_per_vote) * getQty(activeCat.id)).toFixed(2)}
                             </p>
                           </div>
-                          <button onClick={() => setQty(activeCat.id, 1)}
+                          <button onClick={() => {
+                              setQty(activeCat.id, 1);
+                              setQtyInputs(p => ({ ...p, [activeCat.id]: String(Math.min(100, getQty(activeCat.id) + 1)) }));
+                            }}
                             className="w-8 h-8 rounded-lg border flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all flex-shrink-0"
                             style={{ borderColor: "#e5e7eb" }}>
                             <Plus className="w-3.5 h-3.5" />
@@ -1031,12 +1066,20 @@ const EventDetailPage = () => {
                       <div className="p-3 sm:p-4 flex items-center gap-3">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <div className="w-1.5 h-6 rounded-full flex-shrink-0" style={{ background: NAVY }} />
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <p className="text-xs text-muted-foreground leading-none mb-0.5">Ready to vote for</p>
                             <p className="font-bold text-sm truncate" style={{ color: NAVY }}>
                               {activeCat?.candidates?.find((c: any) => c.id === catSel)?.name}
                             </p>
                           </div>
+                          {/* X to deselect */}
+                          <button
+                            onClick={() => handleSelectCandidate(activeCat.id, catSel!)}
+                            className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all hover:scale-110 active:scale-95"
+                            style={{ background: "#fee2e2", color: "#ef4444", border: "1.5px solid #fca5a5" }}
+                            title="Deselect candidate">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                         <Button onClick={() => handleVote(activeCat.id)} disabled={voteLoading}
                           className="text-white gap-1.5 flex-shrink-0 h-10 px-4 text-sm" style={{ background: NAVY }}>
