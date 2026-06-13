@@ -379,7 +379,7 @@ const EventDetailPage = () => {
   };
 
   const getQty = (id: string) => voteQuantity[id] || 1;
-  const setQty = (id: string, d: number) => setVoteQuantity(p => ({ ...p, [id]: Math.max(1, Math.min(100, (p[id] || 1) + d)) }));
+  const setQty = (id: string, d: number) => setVoteQuantity(p => ({ ...p, [id]: Math.max(1, (p[id] || 1) + d) }));
 
   const handleSelectCandidate = (catId: string, candId: string) => {
     if (votedCategories.includes(catId) && !event?.is_paid) return;
@@ -1004,12 +1004,12 @@ const EventDetailPage = () => {
                                 setQtyInputs(p => ({ ...p, [activeCat.id]: raw }));
                                 const v = parseInt(raw);
                                 if (!isNaN(v) && v >= 1) {
-                                  setVoteQuantity(p => ({ ...p, [activeCat.id]: Math.min(100, v) }));
+                                  setVoteQuantity(p => ({ ...p, [activeCat.id]: v }));
                                 }
                               }}
                               onBlur={e => {
                                 // On blur: clamp and sync display value
-                                const v = Math.max(1, Math.min(100, parseInt(e.target.value) || 1));
+                                const v = Math.max(1, parseInt(e.target.value) || 1);
                                 setVoteQuantity(p => ({ ...p, [activeCat.id]: v }));
                                 setQtyInputs(p => ({ ...p, [activeCat.id]: String(v) }));
                               }}
@@ -1022,7 +1022,7 @@ const EventDetailPage = () => {
                           </div>
                           <button onClick={() => {
                               setQty(activeCat.id, 1);
-                              setQtyInputs(p => ({ ...p, [activeCat.id]: String(Math.min(100, getQty(activeCat.id) + 1)) }));
+                              setQtyInputs(p => ({ ...p, [activeCat.id]: String(getQty(activeCat.id) + 1) }));
                             }}
                             className="w-8 h-8 rounded-lg border flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all flex-shrink-0"
                             style={{ borderColor: "#e5e7eb" }}>
