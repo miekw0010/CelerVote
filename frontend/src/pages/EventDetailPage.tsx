@@ -222,20 +222,23 @@ function CandidateCard({ candidate, event, isSelected, hasVoted, isWinner, isTie
           )}
         </div>
 
-        {/* Selected overlay + checkmark badge — sits BELOW the code/vote-count badges (z-10 vs z-10, but those are inside photo div) */}
+        {/* Selected overlay + X deselect button */}
         {isSelected && !hasVoted && (
-          <>
-            {/* tint */}
-            <div className="absolute inset-0 pointer-events-none z-10"
-              style={{ background: `${ORANGE}28` }} />
-            {/* centre checkmark */}
-            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-2xl"
-                style={{ background: ORANGE, border: "3px solid #fff" }}>
-                <CheckCircle2 className="w-7 h-7 text-white" />
-              </div>
+          <div className="absolute inset-0 flex items-center justify-center z-20"
+            style={{ background: `${ORANGE}25` }}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center shadow-xl"
+              style={{ background: ORANGE }}>
+              <CheckCircle2 className="w-6 h-6 text-white" />
             </div>
-          </>
+            {/* X deselect — top right, stops card click propagation */}
+            <button
+              onClick={e => { e.stopPropagation(); onSelect(); }}
+              className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-110 active:scale-95 z-30"
+              style={{ background: "#fff", color: ORANGE, border: `2px solid ${ORANGE}` }}
+              title="Deselect">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         )}
       </div>
 
@@ -973,7 +976,13 @@ const EventDetailPage = () => {
                   {event.is_paid && catSel && isActive && !catProc && (
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                       className="fixed bottom-0 left-0 right-0 z-50 overflow-hidden"
-                      style={{ background: "#fff", borderTop: `2px solid ${ORANGE}40`, boxShadow: `0 -4px 32px ${ORANGE}20` }}>
+                      style={{
+                        background: "rgba(255,255,255,0.75)",
+                        backdropFilter: "blur(20px) saturate(180%)",
+                        WebkitBackdropFilter: "blur(20px) saturate(180%)",
+                        borderTop: `1.5px solid rgba(255,255,255,0.6)`,
+                        boxShadow: `0 -4px 32px ${ORANGE}18, 0 -1px 0 rgba(255,255,255,0.8) inset`,
+                      }}>
                       <div className="h-1 w-full" style={{ background: `linear-gradient(90deg,${NAVY},${ORANGE})` }} />
                       <div className="p-3 sm:p-4 max-w-6xl mx-auto">
                         {/* Candidate name + X deselect */}
@@ -1054,7 +1063,13 @@ const EventDetailPage = () => {
                   {!event.is_paid && catSel && isActive && !catVoted && (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                       className="fixed bottom-0 left-0 right-0 z-50 overflow-hidden"
-                      style={{ background: "#fff", borderTop: `2px solid ${NAVY}30`, boxShadow: `0 -4px 32px ${NAVY}15` }}>
+                      style={{
+                        background: "rgba(255,255,255,0.75)",
+                        backdropFilter: "blur(20px) saturate(180%)",
+                        WebkitBackdropFilter: "blur(20px) saturate(180%)",
+                        borderTop: `1.5px solid rgba(255,255,255,0.6)`,
+                        boxShadow: `0 -4px 32px ${NAVY}18, 0 -1px 0 rgba(255,255,255,0.8) inset`,
+                      }}>
                       <div className="h-1 w-full" style={{ background: `linear-gradient(90deg,${NAVY},${ORANGE})` }} />
                       <div className="p-3 sm:p-4 flex items-center gap-3 max-w-6xl mx-auto">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
