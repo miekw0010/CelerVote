@@ -310,17 +310,16 @@ const EventDetailPage = () => {
   const { toast }                          = useToast();
   const navigate                           = useNavigate();
 
-  // Non-org state — persist selected category across refreshes
-  const [selectedCategory, setSelectedCategory] = useState<any | null>(() => {
-    try { const s = sessionStorage.getItem(`cat_${slug}`); return s ? JSON.parse(s) : null; } catch { return null; }
-  });
+  // Non-org state — always start at the category grid when arriving at the event page
+  const [selectedCategory, setSelectedCategory] = useState<any | null>(null);
   const selectCategory = (cat: any | null) => {
     setSelectedCategory(cat);
-    try {
-      if (cat) sessionStorage.setItem(`cat_${slug}`, JSON.stringify(cat));
-      else sessionStorage.removeItem(`cat_${slug}`);
-    } catch {}
   };
+
+  // Clear any stale category from a previous visit on mount
+  useEffect(() => {
+    try { sessionStorage.removeItem(`cat_${slug}`); } catch {}
+  }, [slug]);
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
   const [votedCategories, setVotedCategories]        = useState<string[]>([]);
   const [voteQuantity, setVoteQuantity]              = useState<Record<string, number>>({});
