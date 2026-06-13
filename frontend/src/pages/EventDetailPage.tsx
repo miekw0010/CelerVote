@@ -971,10 +971,9 @@ const EventDetailPage = () => {
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                       className="sticky bottom-4 sm:bottom-6 glass-card shadow-2xl overflow-hidden"
                       style={{ borderColor: ORANGE + "40", boxShadow: `0 8px 32px ${ORANGE}20` }}>
-                      {/* Accent top bar */}
                       <div className="h-1 w-full" style={{ background: `linear-gradient(90deg,${NAVY},${ORANGE})` }} />
                       <div className="p-3 sm:p-4">
-                        {/* Candidate name row — full width on mobile */}
+                        {/* Candidate name */}
                         <div className="flex items-center gap-2 mb-3">
                           <div className="w-1.5 h-6 rounded-full flex-shrink-0" style={{ background: ORANGE }} />
                           <div className="min-w-0 flex-1">
@@ -984,9 +983,8 @@ const EventDetailPage = () => {
                             </p>
                           </div>
                         </div>
-                        {/* Controls row */}
+                        {/* Controls: qty + pay button */}
                         <div className="flex items-center gap-2 sm:gap-3">
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
                           <button onClick={() => setQty(activeCat.id, -1)}
                             className="w-8 h-8 rounded-lg border flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all flex-shrink-0"
                             style={{ borderColor: "#e5e7eb" }}>
@@ -1012,15 +1010,15 @@ const EventDetailPage = () => {
                             style={{ borderColor: "#e5e7eb" }}>
                             <Plus className="w-3.5 h-3.5" />
                           </button>
-                        </div>
                           <Button onClick={() => handleVote(activeCat.id)} disabled={paymentStep[activeCat.id] === 'verifying'}
-                            className="text-white gap-1.5 whitespace-nowrap text-sm h-10 px-3 sm:px-4 flex-shrink-0" style={{ background: ORANGE }}>
+                            className="text-white gap-1.5 whitespace-nowrap text-sm h-10 px-3 sm:px-4 flex-shrink-0 ml-auto" style={{ background: ORANGE }}>
                             {paymentStep[activeCat.id] === 'verifying'
                               ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
-                              : <><Vote className="w-4 h-4" /><span className="hidden sm:inline">Pay & Vote · </span>{event.currency} {(parseFloat(event.price_per_vote) * getQty(activeCat.id)).toFixed(2)}</>
+                              : <><Vote className="w-4 h-4" /><span className="hidden sm:inline"> Pay & Vote · </span>{event.currency} {(parseFloat(event.price_per_vote) * getQty(activeCat.id)).toFixed(2)}</>
                             }
                           </Button>
                         </div>
+                      </div>
                     </motion.div>
                   )}
 
