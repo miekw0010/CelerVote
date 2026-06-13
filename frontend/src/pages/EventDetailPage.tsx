@@ -90,30 +90,26 @@ function CategoryCard({ category, index, onSelect, voted, event }: {
       className="group relative rounded-2xl border overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-xl"
       style={{ borderColor: voted ? "#16a34a40" : "#00285620", background: voted ? "#16a34a08" : "#fff" }}
     >
-      {/* Top banner */}
-      <div className="relative h-32 flex items-center justify-center overflow-hidden"
-        style={{ background: `linear-gradient(135deg, ${NAVY}18 0%, ${ORANGE}12 100%)` }}>
-        {/* Decorative circles */}
-        <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10" style={{ background: ORANGE }} />
-        <div className="absolute -bottom-4 -left-4 w-16 h-16 rounded-full opacity-10" style={{ background: NAVY }} />
-
-        {/* Icon */}
-        <div className="relative z-10 w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg"
-          style={{ background: voted ? "#16a34a20" : `${NAVY}15`, border: `2px solid ${voted ? "#16a34a40" : NAVY + "25"}` }}>
-          {voted
-            ? <CheckCircle2 className="w-8 h-8 text-green-500" />
-            : <Vote className="w-8 h-8" style={{ color: NAVY }} />
-          }
-        </div>
+      {/* Top banner — use event banner image if available, else gradient */}
+      <div className="relative h-32 overflow-hidden">
+        {event.banner_image
+          ? <img src={event.banner_image} alt={event.title} className="absolute inset-0 w-full h-full object-cover" />
+          : <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${NAVY}18 0%, ${ORANGE}12 100%)` }}>
+              <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10" style={{ background: ORANGE }} />
+              <div className="absolute -bottom-4 -left-4 w-16 h-16 rounded-full opacity-10" style={{ background: NAVY }} />
+            </div>
+        }
+        {/* Dark overlay so badges are readable over the image */}
+        <div className="absolute inset-0 bg-black/30" />
 
         {/* Contestant badge */}
-        <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-xs font-bold text-white"
+        <div className="absolute top-3 right-3 z-10 px-2.5 py-1 rounded-full text-xs font-bold text-white"
           style={{ background: ORANGE }}>
           {count} Contestant{count !== 1 ? "s" : ""}
         </div>
         {voted && (
-          <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1"
-            style={{ background: "#16a34a20", border: "1px solid #16a34a40", color: "#16a34a" }}>
+          <div className="absolute top-3 left-3 z-10 px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1"
+            style={{ background: "#16a34a90", border: "1px solid #16a34a40", color: "#fff" }}>
             <CheckCircle2 className="w-3 h-3" /> Voted
           </div>
         )}
@@ -125,14 +121,10 @@ function CategoryCard({ category, index, onSelect, voted, event }: {
         {category.description && (
           <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{category.description}</p>
         )}
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Vote className="w-3.5 h-3.5" style={{ color: ORANGE }} />
-            {showVotes ? `${totalVotes.toLocaleString()} votes` : "Vote now"}
-          </span>
+        <div className="flex items-center justify-end">
           <span className="flex items-center gap-1 text-xs font-bold group-hover:gap-2 transition-all"
             style={{ color: ORANGE }}>
-            Vote Now <ChevronRight className="w-3.5 h-3.5" />
+            {showVotes ? `${totalVotes.toLocaleString()} votes` : "Vote Now"} <ChevronRight className="w-3.5 h-3.5" />
           </span>
         </div>
       </div>
@@ -230,23 +222,10 @@ function CandidateCard({ candidate, event, isSelected, hasVoted, isWinner, isTie
           )}
         </div>
 
-        {/* Selected overlay + X deselect button */}
+        {/* Selected overlay — subtle tint only, no blocking elements over vote count */}
         {isSelected && !hasVoted && (
-          <div className="absolute inset-0 flex items-center justify-center z-10"
-            style={{ background: `${ORANGE}25` }}>
-            <div className="w-12 h-12 rounded-full flex items-center justify-center shadow-xl"
-              style={{ background: ORANGE }}>
-              <CheckCircle2 className="w-6 h-6 text-white" />
-            </div>
-            {/* X deselect — top right, stops card click propagation */}
-            <button
-              onClick={e => { e.stopPropagation(); onSelect(); }}
-              className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-110 active:scale-95 z-20"
-              style={{ background: "#fff", color: ORANGE, border: `2px solid ${ORANGE}` }}
-              title="Deselect">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <div className="absolute inset-0 pointer-events-none z-10"
+            style={{ background: `${ORANGE}20`, boxShadow: `inset 0 0 0 2px ${ORANGE}` }} />
         )}
       </div>
 
@@ -269,18 +248,12 @@ function CandidateCard({ candidate, event, isSelected, hasVoted, isWinner, isTie
           </div>
         )}
 
-        {/* Action */}
-        {canVote && (
-          <button className="w-full py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all"
-            style={{
-              background: isSelected ? ORANGE : `${ORANGE}15`,
-              color: isSelected ? "#fff" : ORANGE,
-              border: `1.5px solid ${isSelected ? ORANGE : ORANGE + "40"}`,
-            }}>
-            <Vote className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">{isSelected ? "Selected ✓" : "Cast Your Vote"}</span>
-            <span className="sm:hidden">{isSelected ? "✓ Selected" : "Vote"}</span>
-          </button>
+        {/* Selection indicator — shown inline when candidate is selected */}
+        {canVote && isSelected && (
+          <div className="w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+            style={{ background: `${ORANGE}15`, color: ORANGE, border: `1.5px solid ${ORANGE}40` }}>
+            <CheckCircle2 className="w-3.5 h-3.5" /> Selected
+          </div>
         )}
 
         {hasVoted && isSelected && (
@@ -314,7 +287,18 @@ const EventDetailPage = () => {
   const [selectedCategory, setSelectedCategory] = useState<any | null>(null);
   const selectCategory = (cat: any | null) => {
     setSelectedCategory(cat);
+    // Push/pop history so the browser back button returns to the category grid, not /events
+    if (cat) {
+      window.history.pushState({ category: cat.id }, "");
+    }
   };
+
+  // Handle browser back button — return to category grid instead of navigating away
+  useEffect(() => {
+    const onPop = () => { setSelectedCategory(null); };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   // Clear any stale category from a previous visit on mount
   useEffect(() => {
@@ -603,7 +587,7 @@ const EventDetailPage = () => {
                 <span className="text-9xl opacity-10">{typeEmoji[event.event_type] || "🗳️"}</span>
               </div>
           }
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
+
           {isActive && (
             <div className="absolute top-5 left-5 flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-sm"
               style={{ background: "#dc262640", border: "1px solid #dc262650" }}>
