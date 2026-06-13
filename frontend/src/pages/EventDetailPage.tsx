@@ -208,25 +208,25 @@ function CandidateCard({ candidate, event, isSelected, hasVoted, isWinner, isTie
 
         {/* Candidate code — top left */}
         {candidate.code && (
-          <div className="absolute top-3 left-3 z-10 px-2.5 py-1.5 rounded-lg text-white text-xs font-black tracking-wider"
-            style={{ background: `${ORANGE}e0`, backdropFilter: "blur(8px)" }}>
+          <div className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-md sm:rounded-lg text-white text-xs font-black tracking-wider"
+            style={{ background: `${ORANGE}e0`, backdropFilter: "blur(8px)", fontSize: "10px" }}>
             #{candidate.code}
           </div>
         )}
 
         {/* Vote count — top right (only if not winner spot) */}
         {showVotes && !isWinner && (
-          <div className="absolute top-3 right-3 z-10 px-2.5 py-1.5 rounded-lg text-white text-xs font-bold"
-            style={{ background: `${NAVY}cc`, backdropFilter: "blur(8px)" }}>
-            {(candidate.vote_count || 0).toLocaleString()} votes
+          <div className="absolute top-2 right-2 sm:top-3 sm:right-3 z-10 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-md sm:rounded-lg text-white font-bold"
+            style={{ background: `${NAVY}cc`, backdropFilter: "blur(8px)", fontSize: "10px" }}>
+            {(candidate.vote_count || 0).toLocaleString()}v
           </div>
         )}
 
         {/* Name on photo (bottom) */}
-        <div className="absolute bottom-0 inset-x-0 z-10 px-4 pb-3">
-          <p className="text-white font-black text-base leading-tight drop-shadow-lg">{candidate.name}</p>
+        <div className="absolute bottom-0 inset-x-0 z-10 px-2.5 sm:px-4 pb-2 sm:pb-3">
+          <p className="text-white font-black text-xs sm:text-sm leading-tight drop-shadow-lg line-clamp-2">{candidate.name}</p>
           {showVotes && (
-            <p className="text-white/70 text-xs mt-0.5">{pct}% of votes</p>
+            <p className="text-white/70 text-xs mt-0.5">{pct}%</p>
           )}
         </div>
 
@@ -243,11 +243,11 @@ function CandidateCard({ candidate, event, isSelected, hasVoted, isWinner, isTie
       </div>
 
       {/* ── Card body ── */}
-      <div className="p-4">
+      <div className="p-2.5 sm:p-4">
         {candidate.description ? (
-          <p className="text-xs text-muted-foreground mb-3 line-clamp-2 leading-relaxed">{candidate.description}</p>
+          <p className="text-xs text-muted-foreground mb-2 sm:mb-3 line-clamp-2 leading-relaxed">{candidate.description}</p>
         ) : (
-          <p className="text-xs text-muted-foreground/40 mb-3 italic">No bio available</p>
+          <p className="text-xs text-muted-foreground/40 mb-2 sm:mb-3 italic hidden sm:block">No bio available</p>
         )}
 
         {/* Progress bar */}
@@ -263,14 +263,15 @@ function CandidateCard({ candidate, event, isSelected, hasVoted, isWinner, isTie
 
         {/* Action */}
         {canVote && (
-          <button className="w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all"
+          <button className="w-full py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all"
             style={{
               background: isSelected ? ORANGE : `${ORANGE}15`,
               color: isSelected ? "#fff" : ORANGE,
               border: `1.5px solid ${isSelected ? ORANGE : ORANGE + "40"}`,
             }}>
-            <Vote className="w-4 h-4" />
-            {isSelected ? "Selected ✓" : "Cast Your Vote"}
+            <Vote className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">{isSelected ? "Selected ✓" : "Cast Your Vote"}</span>
+            <span className="sm:hidden">{isSelected ? "✓ Selected" : "Vote"}</span>
           </button>
         )}
 
@@ -301,8 +302,17 @@ const EventDetailPage = () => {
   const { toast }                          = useToast();
   const navigate                           = useNavigate();
 
-  // Non-org state
-  const [selectedCategory, setSelectedCategory]     = useState<any | null>(null);
+  // Non-org state — persist selected category across refreshes
+  const [selectedCategory, setSelectedCategory] = useState<any | null>(() => {
+    try { const s = sessionStorage.getItem(`cat_${slug}`); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const selectCategory = (cat: any | null) => {
+    setSelectedCategory(cat);
+    try {
+      if (cat) sessionStorage.setItem(`cat_${slug}`, JSON.stringify(cat));
+      else sessionStorage.removeItem(`cat_${slug}`);
+    } catch {}
+  };
   const [selectedCandidates, setSelectedCandidates] = useState<Record<string, string>>({});
   const [votedCategories, setVotedCategories]        = useState<string[]>([]);
   const [voteQuantity, setVoteQuantity]              = useState<Record<string, number>>({});
@@ -380,7 +390,11 @@ const EventDetailPage = () => {
 
   const handleSelectCandidate = (catId: string, candId: string) => {
     if (votedCategories.includes(catId) && !event?.is_paid) return;
-    setSelectedCandidates(p => ({ ...p, [catId]: candId }));
+    setSelectedCandidates(p => ({
+      ...p,
+      // Toggle: clicking the already-selected candidate deselects it
+      [catId]: p[catId] === candId ? '' : candId,
+    }));
   };
 
   const handleVote = async (catId: string) => {
@@ -396,7 +410,7 @@ const EventDetailPage = () => {
       await castVote({ event_slug: slug!, category_id: catId, candidate_ids: [candId] });
       setVotedCategories(p => [...p, catId]); fireConfetti(); refetch();
       toast({ title: "Vote cast! 🎉", description: "Your vote has been recorded." });
-      setTimeout(() => { setSelectedCategory(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }, 1600);
+      setTimeout(() => { selectCategory(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }, 1600);
     } catch (e: any) {
       const msg = e?.message || '';
       if (msg.includes('already')) toast({ title: "Already voted", variant: "destructive" });
@@ -603,7 +617,7 @@ const EventDetailPage = () => {
 
           {/* Back nav */}
           {selectedCategory && !isOrg ? (
-            <button onClick={() => { setSelectedCategory(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            <button onClick={() => { selectCategory(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors group">
               <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" /> Back to Categories
             </button>
@@ -864,10 +878,10 @@ const EventDetailPage = () => {
                         <p className="font-medium">No categories found</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                         {filteredCats.map((cat: any, i: number) => (
                           <CategoryCard key={cat.id} category={cat} index={i}
-                            onSelect={setSelectedCategory} voted={votedCategories.includes(cat.id)} event={event} />
+                            onSelect={selectCategory} voted={votedCategories.includes(cat.id)} event={event} />
                         ))}
                       </div>
                     )}
@@ -941,7 +955,7 @@ const EventDetailPage = () => {
                       <p className="text-sm">Check back soon.</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 mb-8">
                       {sortedCands.map((cand: any) => (
                         <CandidateCard key={cand.id} candidate={cand} event={event}
                           isSelected={catSel === cand.id} hasVoted={catVoted}
@@ -955,53 +969,83 @@ const EventDetailPage = () => {
                   {/* Sticky footer — paid */}
                   {event.is_paid && catSel && isActive && !catProc && (
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                      className="sticky bottom-6 glass-card p-4 shadow-2xl"
+                      className="sticky bottom-4 sm:bottom-6 glass-card shadow-2xl overflow-hidden"
                       style={{ borderColor: ORANGE + "40", boxShadow: `0 8px 32px ${ORANGE}20` }}>
-                      <div className="flex items-center gap-4 flex-wrap">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-muted-foreground">Selected</p>
-                          <p className="font-bold text-sm truncate" style={{ color: NAVY }}>
-                            {activeCat?.candidates?.find((c: any) => c.id === catSel)?.name}
-                          </p>
+                      {/* Accent top bar */}
+                      <div className="h-1 w-full" style={{ background: `linear-gradient(90deg,${NAVY},${ORANGE})` }} />
+                      <div className="p-3 sm:p-4">
+                        {/* Candidate name row — full width on mobile */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-1.5 h-6 rounded-full flex-shrink-0" style={{ background: ORANGE }} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-muted-foreground leading-none mb-0.5">Voting for</p>
+                            <p className="font-bold text-sm sm:text-base truncate" style={{ color: NAVY }}>
+                              {activeCat?.candidates?.find((c: any) => c.id === catSel)?.name}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => setQty(activeCat.id, -1)} className="w-8 h-8 rounded-lg border flex items-center justify-center hover:bg-gray-50 transition-colors" style={{ borderColor: "#e5e7eb" }}>
+                        {/* Controls row */}
+                        <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button onClick={() => setQty(activeCat.id, -1)}
+                            className="w-8 h-8 rounded-lg border flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all flex-shrink-0"
+                            style={{ borderColor: "#e5e7eb" }}>
                             <Minus className="w-3.5 h-3.5" />
                           </button>
-                          <div className="text-center min-w-[3rem]">
-                            <span className="font-black text-lg">{getQty(activeCat.id)}</span>
-                            <p className="text-xs text-muted-foreground">{event.currency} {(parseFloat(event.price_per_vote) * getQty(activeCat.id)).toFixed(2)}</p>
+                          <div className="flex flex-col items-center">
+                            <input
+                              type="number" min="1" max="100"
+                              value={getQty(activeCat.id)}
+                              onChange={e => {
+                                const v = parseInt(e.target.value) || 1;
+                                setVoteQuantity(p => ({ ...p, [activeCat.id]: Math.max(1, Math.min(100, v)) }));
+                              }}
+                              className="w-14 h-8 text-center font-black text-base border rounded-lg focus:outline-none focus:ring-1"
+                              style={{ borderColor: ORANGE + "60", color: NAVY }}
+                            />
+                            <p className="text-xs text-muted-foreground mt-0.5 whitespace-nowrap">
+                              {event.currency} {(parseFloat(event.price_per_vote) * getQty(activeCat.id)).toFixed(2)}
+                            </p>
                           </div>
-                          <button onClick={() => setQty(activeCat.id, 1)} className="w-8 h-8 rounded-lg border flex items-center justify-center hover:bg-gray-50 transition-colors" style={{ borderColor: "#e5e7eb" }}>
+                          <button onClick={() => setQty(activeCat.id, 1)}
+                            className="w-8 h-8 rounded-lg border flex items-center justify-center hover:bg-gray-50 active:scale-95 transition-all flex-shrink-0"
+                            style={{ borderColor: "#e5e7eb" }}>
                             <Plus className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                        <Button onClick={() => handleVote(activeCat.id)} disabled={paymentStep[activeCat.id] === 'verifying'}
-                          className="text-white gap-2" style={{ background: ORANGE }}>
-                          {paymentStep[activeCat.id] === 'verifying'
-                            ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
-                            : <>Pay & Vote · {event.currency} {(parseFloat(event.price_per_vote) * getQty(activeCat.id)).toFixed(2)}</>
-                          }
-                        </Button>
-                      </div>
+                          <Button onClick={() => handleVote(activeCat.id)} disabled={paymentStep[activeCat.id] === 'verifying'}
+                            className="text-white gap-1.5 whitespace-nowrap text-sm h-10 px-3 sm:px-4 flex-shrink-0" style={{ background: ORANGE }}>
+                            {paymentStep[activeCat.id] === 'verifying'
+                              ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
+                              : <><Vote className="w-4 h-4" /><span className="hidden sm:inline">Pay & Vote · </span>{event.currency} {(parseFloat(event.price_per_vote) * getQty(activeCat.id)).toFixed(2)}</>
+                            }
+                          </Button>
+                        </div>
                     </motion.div>
                   )}
 
                   {/* Sticky footer — free */}
                   {!event.is_paid && catSel && isActive && !catVoted && (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                      className="sticky bottom-6 glass-card p-4 shadow-xl"
+                      className="sticky bottom-4 sm:bottom-6 glass-card shadow-xl overflow-hidden"
                       style={{ borderColor: NAVY + "30", boxShadow: `0 8px 32px ${NAVY}15` }}>
-                      <div className="flex items-center gap-4">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-muted-foreground">Ready to vote for</p>
-                          <p className="font-bold text-sm truncate" style={{ color: NAVY }}>
-                            {activeCat?.candidates?.find((c: any) => c.id === catSel)?.name}
-                          </p>
+                      <div className="h-1 w-full" style={{ background: `linear-gradient(90deg,${NAVY},${ORANGE})` }} />
+                      <div className="p-3 sm:p-4 flex items-center gap-3">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className="w-1.5 h-6 rounded-full flex-shrink-0" style={{ background: NAVY }} />
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground leading-none mb-0.5">Ready to vote for</p>
+                            <p className="font-bold text-sm truncate" style={{ color: NAVY }}>
+                              {activeCat?.candidates?.find((c: any) => c.id === catSel)?.name}
+                            </p>
+                          </div>
                         </div>
                         <Button onClick={() => handleVote(activeCat.id)} disabled={voteLoading}
-                          className="text-white gap-2" style={{ background: NAVY }}>
-                          {voteLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Casting…</> : <><Vote className="w-4 h-4" /> Submit Vote</>}
+                          className="text-white gap-1.5 flex-shrink-0 h-10 px-4 text-sm" style={{ background: NAVY }}>
+                          {voteLoading
+                            ? <><Loader2 className="w-4 h-4 animate-spin" /><span className="hidden sm:inline"> Casting…</span></>
+                            : <><Vote className="w-4 h-4" /><span className="hidden sm:inline"> Submit Vote</span><span className="sm:hidden">Vote</span></>
+                          }
                         </Button>
                       </div>
                     </motion.div>
