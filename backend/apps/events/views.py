@@ -134,6 +134,7 @@ class AdminEventStatusView(APIView):
 
 class CategoryListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class   = None  # Return ALL categories — never paginate
 
     def get_serializer_class(self):
         return CategoryWriteSerializer if self.request.method == 'POST' else CategorySerializer
@@ -199,6 +200,7 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
 class CandidateListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticatedOrReadOnly]
     parser_classes     = [MultiPartParser, FormParser, JSONParser]
+    pagination_class   = None  # Return ALL candidates — never paginate
 
     def get_serializer_class(self):
         return CandidateWriteSerializer if self.request.method == 'POST' else CandidateSerializer
