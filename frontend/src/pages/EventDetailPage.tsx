@@ -222,10 +222,20 @@ function CandidateCard({ candidate, event, isSelected, hasVoted, isWinner, isTie
           )}
         </div>
 
-        {/* Selected overlay — subtle tint only, no blocking elements over vote count */}
+        {/* Selected overlay + checkmark badge — sits BELOW the code/vote-count badges (z-10 vs z-10, but those are inside photo div) */}
         {isSelected && !hasVoted && (
-          <div className="absolute inset-0 pointer-events-none z-10"
-            style={{ background: `${ORANGE}20`, boxShadow: `inset 0 0 0 2px ${ORANGE}` }} />
+          <>
+            {/* tint */}
+            <div className="absolute inset-0 pointer-events-none z-10"
+              style={{ background: `${ORANGE}28` }} />
+            {/* centre checkmark */}
+            <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-2xl"
+                style={{ background: ORANGE, border: "3px solid #fff" }}>
+                <CheckCircle2 className="w-7 h-7 text-white" />
+              </div>
+            </div>
+          </>
         )}
       </div>
 
@@ -962,10 +972,10 @@ const EventDetailPage = () => {
                   {/* Sticky footer — paid */}
                   {event.is_paid && catSel && isActive && !catProc && (
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                      className="sticky bottom-4 sm:bottom-6 glass-card shadow-2xl overflow-hidden"
-                      style={{ borderColor: ORANGE + "40", boxShadow: `0 8px 32px ${ORANGE}20` }}>
+                      className="fixed bottom-0 left-0 right-0 z-50 overflow-hidden"
+                      style={{ background: "#fff", borderTop: `2px solid ${ORANGE}40`, boxShadow: `0 -4px 32px ${ORANGE}20` }}>
                       <div className="h-1 w-full" style={{ background: `linear-gradient(90deg,${NAVY},${ORANGE})` }} />
-                      <div className="p-3 sm:p-4">
+                      <div className="p-3 sm:p-4 max-w-6xl mx-auto">
                         {/* Candidate name + X deselect */}
                         <div className="flex items-center gap-2 mb-3">
                           <div className="w-1.5 h-6 rounded-full flex-shrink-0" style={{ background: ORANGE }} />
@@ -1043,10 +1053,10 @@ const EventDetailPage = () => {
                   {/* Sticky footer — free */}
                   {!event.is_paid && catSel && isActive && !catVoted && (
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                      className="sticky bottom-4 sm:bottom-6 glass-card shadow-xl overflow-hidden"
-                      style={{ borderColor: NAVY + "30", boxShadow: `0 8px 32px ${NAVY}15` }}>
+                      className="fixed bottom-0 left-0 right-0 z-50 overflow-hidden"
+                      style={{ background: "#fff", borderTop: `2px solid ${NAVY}30`, boxShadow: `0 -4px 32px ${NAVY}15` }}>
                       <div className="h-1 w-full" style={{ background: `linear-gradient(90deg,${NAVY},${ORANGE})` }} />
-                      <div className="p-3 sm:p-4 flex items-center gap-3">
+                      <div className="p-3 sm:p-4 flex items-center gap-3 max-w-6xl mx-auto">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           <div className="w-1.5 h-6 rounded-full flex-shrink-0" style={{ background: NAVY }} />
                           <div className="min-w-0 flex-1">
