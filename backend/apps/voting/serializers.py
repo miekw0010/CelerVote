@@ -11,7 +11,7 @@ class CastVoteSerializer(serializers.Serializer):
         max_length=10
     )
     payment_ref = serializers.CharField(required=False, allow_blank=True)
-    quantity = serializers.IntegerField(required=False, default=1, min_value=1, max_value=100)
+    quantity = serializers.IntegerField(required=False, default=1, min_value=1)  # no upper cap — paid events allow any quantity
 
 
 class BulkVoteItemSerializer(serializers.Serializer):
