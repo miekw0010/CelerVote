@@ -135,17 +135,30 @@ class VoteCaster:
             if Vote.objects.filter(payment_ref=payment_ref).exists():
                 return {'success': False, 'error': 'This payment has already been used to cast a vote.'}
 
-            # Verify with Paystack directly (cached so repeat calls are instant)
-            import requests as _requests
+            # Check payment status in DB first (instant — no external API call)
+            # VerifyPaymentView already marks it SUCCESS when Paystack popup closes.
+            # Only fall back to live Paystack API if DB record isn't confirmed yet.
+            from apps.payments.models import Payment as PaymentModel
             cache_key = f'paystack_verified:{payment_ref}'
             verified  = cache.get(cache_key)
 
             if not verified:
                 try:
+                    pay_obj = PaymentModel.objects.get(reference=payment_ref)
+                    if pay_obj.status == PaymentModel.Status.SUCCESS:
+                        verified = True
+                        cache.set(cache_key, True, timeout=600)
+                except PaymentModel.DoesNotExist:
+                    pass
+
+            if not verified:
+                # DB not confirmed yet — call Paystack directly (short timeout)
+                import requests as _requests
+                try:
                     resp = _requests.get(
                         f'https://api.paystack.co/transaction/verify/{payment_ref}',
                         headers={'Authorization': f'Bearer {settings.PAYSTACK_SECRET_KEY}'},
-                        timeout=10,
+                        timeout=8,
                     )
                     data = resp.json()
                     if not (data.get('status') and data.get('data', {}).get('status') == 'success'):
@@ -156,23 +169,14 @@ class VoteCaster:
                     if paid_amount < expected_min:
                         return {'success': False, 'error': 'Payment amount does not match the vote price.'}
 
-                    # Cache the verified result — won't change for a valid ref
                     cache.set(cache_key, True, timeout=600)
 
-                    # Update Payment record to success
-                    try:
-                        from apps.payments.models import Payment as PaymentModel
-                        PaymentModel.objects.filter(
-                            reference=payment_ref
-                        ).update(
-                            status=PaymentModel.Status.SUCCESS,
-                            paystack_id=str(data.get('data', {}).get('id', '')),
-                            channel=data.get('data', {}).get('channel', ''),
-                        )
-                    except Exception as pe:
-                        import logging
-                        logging.getLogger(__name__).warning(f'Payment status update failed: {pe}')
-
+                    # Update Payment record to SUCCESS
+                    PaymentModel.objects.filter(reference=payment_ref).update(
+                        status=PaymentModel.Status.SUCCESS,
+                        paystack_id=str(data.get('data', {}).get('id', '')),
+                        channel=data.get('data', {}).get('channel', ''),
+                    )
                 except Exception as e:
                     import logging
                     logging.getLogger(__name__).error(f'Paystack verify error: {e}')
