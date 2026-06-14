@@ -109,7 +109,7 @@ class VoteCaster:
         self.event       = event
         self.voter       = voter
         self.request     = request
-        self.ip          = ip or (get_client_ip(request) if request else '0.0.0.0')
+        self.ip          = ip if (ip and ip not in ('', 'webhook')) else (get_client_ip(request) if request else '127.0.0.1')
         self.voter_group = voter_group
 
     @transaction.atomic

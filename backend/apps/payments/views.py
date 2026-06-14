@@ -133,115 +133,77 @@ class PaystackWebhookView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        # Verify signature
         signature = request.headers.get('X-Paystack-Signature', '')
         if not paystack.verify_webhook_signature(request.body, signature):
-            logger.error("Invalid webhook signature")
             return Response({'error': 'Invalid signature'}, status=401)
 
-        try:
-            payload = json.loads(request.body)
-        except json.JSONDecodeError:
-            logger.error("Invalid JSON payload")
-            return Response({'error': 'Invalid JSON'}, status=400)
-        
-        event = payload.get('event')
-        data = payload.get('data', {})
-        
-        logger.info(f"Webhook received: {event} for ref: {data.get('reference')}")
+        payload = json.loads(request.body)
+        event   = payload.get('event')
+        data    = payload.get('data', {})
 
         if event == 'charge.success':
             reference = data.get('reference', '')
-            
-            if not reference:
-                return Response({'error': 'No reference'}, status=400)
+            import logging as _wh_log
+            _log = _wh_log.getLogger(__name__)
 
-            # 1. Update Payment record
+            # ── 1. Mark Payment record as SUCCESS ────────────────────────────
             payment_obj = None
             try:
                 payment_obj = Payment.objects.get(reference=reference)
                 if payment_obj.status != Payment.Status.SUCCESS:
-                    payment_obj.status = Payment.Status.SUCCESS
-                    payment_obj.paystack_id = str(data.get('id', ''))
-                    payment_obj.channel = data.get('channel', '')
+                    payment_obj.status        = Payment.Status.SUCCESS
+                    payment_obj.paystack_id   = str(data.get('id', ''))
+                    payment_obj.channel       = data.get('channel', '')
                     payment_obj.paystack_data = data
                     payment_obj.save()
-                    logger.info(f"Updated payment {reference} to SUCCESS")
             except Payment.DoesNotExist:
-                logger.error(f"Payment record not found: {reference}")
                 payment_obj = None
 
-            # 2. AUTO-CAST VOTE using VoteCaster
+            # ── 2. AUTO-CAST THE VOTE if it hasn't been cast yet ────────────
+            # Safety net: if the frontend castVote() call failed for any reason
+            # (network drop, Paystack timing race, browser closed), the webhook
+            # fires ~1-3s later and casts the vote itself.
+            # Idempotency guaranteed by Vote.objects.filter(payment_ref=…) check
+            # inside VoteCaster.cast_vote().
             if payment_obj and payment_obj.category_id and payment_obj.candidate_id:
                 from apps.voting.models import Vote
-                
-                # Check if already cast
-                if Vote.objects.filter(payment_ref=reference).exists():
-                    logger.info(f"Votes already cast for {reference}")
-                    return Response({'status': 'ok'})
-                
-                try:
-                    from apps.voting.services import VoteCaster
-                    from django.contrib.auth import get_user_model
-                    
-                    # Get or create user from email
-                    User = get_user_model()
-                    voter = payment_obj.user
-                    if not voter and payment_obj.email:
-                        voter, _ = User.objects.get_or_create(
-                            email=payment_obj.email,
-                            defaults={
-                                'name': payment_obj.email.split('@')[0],
-                                'is_verified': True,
-                            }
+                already_cast = Vote.objects.filter(payment_ref=reference).exists()
+                if not already_cast:
+                    try:
+                        from apps.voting.services import VoteCaster
+                        caster = VoteCaster(
+                            event=payment_obj.event,
+                            voter=payment_obj.user,
+                            request=None,
+                            ip='127.0.0.1',
                         )
-                    
-                    # Create VoteCaster with ip parameter (your VoteCarter accepts 'ip')
-                    caster = VoteCaster(
-                        event=payment_obj.event,
-                        voter=voter,
-                        request=None,
-                        voter_group=None,
-                        ip='webhook'
-                    )
-                    
-                    result = caster.cast_vote(
-                        category_id=str(payment_obj.category_id),
-                        candidate_ids=[str(payment_obj.candidate_id)],
-                        payment_ref=reference,
-                        quantity=payment_obj.votes_bought or 1,
-                    )
-                    
-                    if result.get('success'):
-                        logger.info(f"Webhook auto-cast SUCCESS for {reference}")
-                        
-                        # Clear cache
-                        from django.core.cache import cache
-                        cache.delete(f'live_results:{payment_obj.event.id}')
-                        
-                        # Broadcast via WebSocket
-                        try:
-                            from apps.voting.views import broadcast_results
-                            broadcast_results(payment_obj.event)
-                        except Exception as e:
-                            logger.warning(f"Broadcast failed: {e}")
-                    else:
-                        logger.warning(f"Webhook auto-cast failed: {result.get('error')}")
-                        
-                except Exception as e:
-                    logger.error(f"Webhook auto-cast error: {e}", exc_info=True)
+                        result = caster.cast_vote(
+                            category_id=str(payment_obj.category_id),
+                            candidate_ids=[str(payment_obj.candidate_id)],
+                            payment_ref=reference,
+                            quantity=payment_obj.votes_bought or 1,
+                        )
+                        if result.get('success'):
+                            _log.info(
+                                f'Webhook auto-cast success for ref={reference} '
+                                f'cat={payment_obj.category_id} cand={payment_obj.candidate_id}'
+                            )
+                        else:
+                            _log.warning(
+                                f'Webhook auto-cast returned error for ref={reference}: '
+                                f'{result.get("error")}'
+                            )
+                    except Exception as exc:
+                        _log.error(f'Webhook auto-cast exception for ref={reference}: {exc}')
 
-            # 3. Handle ticket purchases (keep your existing code)
+            # ── 3. Handle ticket purchases ───────────────────────────────────
             from apps.tickets.models import Ticket as TicketModel
             from apps.tickets.services import verify_ticket_payment
             if reference and TicketModel.objects.filter(paystack_ref=reference, status='pending').exists():
                 try:
                     verify_ticket_payment(reference)
                 except Exception as e:
-                    logger.error(f'Ticket verify failed: {e}')
+                    _log.error(f'Webhook ticket verify failed for {reference}: {e}')
 
         return Response({'status': 'ok'})
 
