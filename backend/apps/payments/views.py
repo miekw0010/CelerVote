@@ -143,26 +143,73 @@ class PaystackWebhookView(APIView):
 
         if event == 'charge.success':
             reference = data.get('reference', '')
-            # Handle voting payments
+            import logging as _wh_log
+            _log = _wh_log.getLogger(__name__)
+
+            # ── 1. Mark Payment record as SUCCESS ────────────────────────────
+            payment_obj = None
             try:
-                payment = Payment.objects.get(reference=reference)
-                if payment.status != Payment.Status.SUCCESS:
-                    payment.status        = Payment.Status.SUCCESS
-                    payment.paystack_id   = str(data.get('id', ''))
-                    payment.channel       = data.get('channel', '')
-                    payment.paystack_data = data
-                    payment.save()
+                payment_obj = Payment.objects.get(reference=reference)
+                if payment_obj.status != Payment.Status.SUCCESS:
+                    payment_obj.status        = Payment.Status.SUCCESS
+                    payment_obj.paystack_id   = str(data.get('id', ''))
+                    payment_obj.channel       = data.get('channel', '')
+                    payment_obj.paystack_data = data
+                    payment_obj.save()
             except Payment.DoesNotExist:
-                pass
-            # Handle ticket purchases (fallback if frontend verify call missed)
+                payment_obj = None
+
+            # ── 2. AUTO-CAST THE VOTE if it hasn't been cast yet ────────────
+            # This is the ultimate safety net:  if the frontend castVote() call
+            # failed for any reason (network drop, Paystack timing race, browser
+            # closed), the webhook fires ~1-3 s later and casts the vote itself.
+            # Idempotency is guaranteed by the Vote.objects.filter(payment_ref=…)
+            # check already inside VoteCaster.cast_vote().
+            if payment_obj and payment_obj.category_id and payment_obj.candidate_id:
+                from apps.voting.models import Vote
+                already_cast = Vote.objects.filter(payment_ref=reference).exists()
+                if not already_cast:
+                    try:
+                        from apps.voting.services import VoteCaster
+                        from django.contrib.auth import get_user_model
+                        User = get_user_model()
+
+                        # Resolve the voter — may be authenticated or guest
+                        voter = payment_obj.user
+                        event_obj = payment_obj.event
+
+                        caster = VoteCaster(
+                            event=event_obj,
+                            user=voter,
+                            ip=payment_obj.phone or '0.0.0.0',  # best available identifier
+                        )
+                        result = caster.cast_vote(
+                            category_id=str(payment_obj.category_id),
+                            candidate_ids=[str(payment_obj.candidate_id)],
+                            payment_ref=reference,
+                            quantity=payment_obj.votes_bought or 1,
+                        )
+                        if result.get('success'):
+                            _log.info(
+                                f'Webhook auto-cast success for ref={reference} '
+                                f'cat={payment_obj.category_id} cand={payment_obj.candidate_id}'
+                            )
+                        else:
+                            _log.warning(
+                                f'Webhook auto-cast returned error for ref={reference}: '
+                                f'{result.get("error")}'
+                            )
+                    except Exception as exc:
+                        _log.error(f'Webhook auto-cast exception for ref={reference}: {exc}')
+
+            # ── 3. Handle ticket purchases ───────────────────────────────────
             from apps.tickets.models import Ticket as TicketModel
             from apps.tickets.services import verify_ticket_payment
             if reference and TicketModel.objects.filter(paystack_ref=reference, status='pending').exists():
                 try:
                     verify_ticket_payment(reference)
                 except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).error(f"Webhook ticket verify failed for {reference}: {e}")
+                    _log.error(f'Webhook ticket verify failed for {reference}: {e}')
 
         return Response({'status': 'ok'})
 
