@@ -427,35 +427,10 @@ const EventDetailPage = () => {
   const handlePaymentSuccess = async (reference: string, catId: string) => {
     lockCat(catId); setPaymentStep(p => ({ ...p, [catId]: 'verifying' }));
     const qty = getQty(catId);
-    const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
-    const MAX = 6; // more retries, shorter initial delay
+    const MAX = 6;
 
-    // Step 1: verify payment on backend first (with retries) before casting
-    const verifyPayment = async (n: number): Promise<boolean> => {
-      try {
-        const r = await fetch(`${API}/payments/verify/${reference}/`, { headers: { 'Content-Type': 'application/json' } });
-        const d = await r.json();
-        if (d.status === 'success') return true;
-        if (n < 4) { await new Promise(r => setTimeout(r, n * 1000)); return verifyPayment(n + 1); }
-        return false;
-      } catch {
-        if (n < 4) { await new Promise(r => setTimeout(r, n * 1000)); return verifyPayment(n + 1); }
-        return false;
-      }
-    };
-
-    const paymentVerified = await verifyPayment(1);
-    if (!paymentVerified) {
-      // Payment didn't verify — save ref so admin can recover, unblock UI
-      const failed = JSON.parse(localStorage.getItem('failed_votes') || '[]');
-      failed.push({ reference, event_slug: slug, category_id: catId, candidate_id: selectedCandidates[catId], quantity: qty, timestamp: new Date().toISOString(), reason: 'payment_verify_failed' });
-      localStorage.setItem('failed_votes', JSON.stringify(failed));
-      setPaymentStep(p => ({ ...p, [catId]: 'select' })); unlockCat(catId);
-      toast({ title: 'Payment confirmed but could not verify yet', description: `Save your ref: ${reference}. Contact support if votes don't appear.`, variant: 'destructive', duration: 20000 });
-      return;
-    }
-
-    // Step 2: cast the vote now that payment is verified
+    // Cast the vote directly — the backend verifies the payment internally.
+    // No separate pre-verify step needed (avoids localhost URL fallback issue).
     const attempt = async (n: number): Promise<void> => {
       try {
         await castVote({ event_slug: slug!, category_id: catId, candidate_ids: [selectedCandidates[catId]], payment_ref: reference, quantity: qty });
@@ -464,29 +439,22 @@ const EventDetailPage = () => {
         setTimeout(() => { setPaymentStep(p => ({ ...p, [catId]: 'select' })); setSelectedCandidates(p => ({ ...p, [catId]: '' })); setVoteQuantity(p => ({ ...p, [catId]: 1 })); unlockCat(catId); }, 1500);
       } catch (e: any) {
         const msg = e?.message || '';
-        // Already cast — treat as success
-        if (msg.includes('already been used') || msg.includes('already cast')) {
+        if (msg.includes('already been used') || msg.includes('already cast') || msg.includes('already voted')) {
           setVotedCategories(p => [...p, catId]); setPaymentStep(p => ({ ...p, [catId]: 'done' })); fireConfetti(); refetch();
           toast({ title: 'Votes cast! 🎉' });
           setTimeout(() => { setPaymentStep(p => ({ ...p, [catId]: 'select' })); setSelectedCandidates(p => ({ ...p, [catId]: '' })); setVoteQuantity(p => ({ ...p, [catId]: 1 })); unlockCat(catId); }, 1500);
           return;
         }
         if (n < MAX) {
-          toast({ title: `Vote recording... (attempt ${n}/${MAX})`, description: 'Please wait, do not close this page.' });
-          await new Promise(r => setTimeout(r, Math.min(n * 1200, 5000)));
+          await new Promise(r => setTimeout(r, Math.min(n * 1500, 5000)));
           return attempt(n + 1);
         }
-        // All retries exhausted — save for admin recovery and unblock UI immediately
+        // All retries exhausted — unblock UI, webhook will cast as safety net
         const failed = JSON.parse(localStorage.getItem('failed_votes') || '[]');
         failed.push({ reference, event_slug: slug, category_id: catId, candidate_id: selectedCandidates[catId], quantity: qty, timestamp: new Date().toISOString(), reason: msg });
         localStorage.setItem('failed_votes', JSON.stringify(failed));
         setPaymentStep(p => ({ ...p, [catId]: 'select' })); unlockCat(catId);
-        toast({
-          title: 'Payment received — vote pending',
-          description: `Your payment went through. Save ref: ${reference}. Admin will recover your vote.`,
-          variant: 'destructive',
-          duration: 30000,
-        });
+        toast({ title: 'Payment received — vote pending', description: `Ref: ${reference}. Your vote will be recorded shortly.`, variant: 'destructive', duration: 30000 });
       }
     };
     await attempt(1);
