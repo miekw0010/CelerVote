@@ -160,28 +160,22 @@ class PaystackWebhookView(APIView):
                 payment_obj = None
 
             # ── 2. AUTO-CAST THE VOTE if it hasn't been cast yet ────────────
-            # This is the ultimate safety net:  if the frontend castVote() call
-            # failed for any reason (network drop, Paystack timing race, browser
-            # closed), the webhook fires ~1-3 s later and casts the vote itself.
-            # Idempotency is guaranteed by the Vote.objects.filter(payment_ref=…)
-            # check already inside VoteCaster.cast_vote().
+            # Safety net: if the frontend castVote() call failed for any reason
+            # (network drop, Paystack timing race, browser closed), the webhook
+            # fires ~1-3s later and casts the vote itself.
+            # Idempotency guaranteed by Vote.objects.filter(payment_ref=…) check
+            # inside VoteCaster.cast_vote().
             if payment_obj and payment_obj.category_id and payment_obj.candidate_id:
                 from apps.voting.models import Vote
                 already_cast = Vote.objects.filter(payment_ref=reference).exists()
                 if not already_cast:
                     try:
                         from apps.voting.services import VoteCaster
-                        from django.contrib.auth import get_user_model
-                        User = get_user_model()
-
-                        # Resolve the voter — may be authenticated or guest
-                        voter = payment_obj.user
-                        event_obj = payment_obj.event
-
                         caster = VoteCaster(
-                            event=event_obj,
-                            user=voter,
-                            ip=payment_obj.phone or '0.0.0.0',  # best available identifier
+                            event=payment_obj.event,
+                            voter=payment_obj.user,
+                            request=None,
+                            ip=payment_obj.phone or '0.0.0.0',
                         )
                         result = caster.cast_vote(
                             category_id=str(payment_obj.category_id),

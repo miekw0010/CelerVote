@@ -427,83 +427,68 @@ const EventDetailPage = () => {
   const handlePaymentSuccess = async (reference: string, catId: string) => {
     lockCat(catId); setPaymentStep(p => ({ ...p, [catId]: 'verifying' }));
     const qty = getQty(catId);
+    const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+    const MAX = 6; // more retries, shorter initial delay
 
-    // MAX retries on the frontend side.  The backend now also retries internally
-    // when Paystack returns "pending", so frontend retries are a last safety net.
-    const MAX = 4;
-
-    const markSuccess = () => {
-      setVotedCategories(p => [...p, catId]);
-      setPaymentStep(p => ({ ...p, [catId]: 'done' }));
-      fireConfetti();
-      refetch();
-      toast({ title: "Votes cast! 🎉", description: `${qty} vote(s) recorded.` });
-      setTimeout(() => {
-        setPaymentStep(p => ({ ...p, [catId]: 'select' }));
-        setSelectedCandidates(p => ({ ...p, [catId]: '' }));
-        setVoteQuantity(p => ({ ...p, [catId]: 1 }));
-        unlockCat(catId);
-      }, 1500);
-    };
-
-    const attempt = async (n: number): Promise<void> => {
+    // Step 1: verify payment on backend first (with retries) before casting
+    const verifyPayment = async (n: number): Promise<boolean> => {
       try {
-        await castVote({
-          event_slug: slug!,
-          category_id: catId,
-          candidate_ids: [selectedCandidates[catId]],
-          payment_ref: reference,
-          quantity: qty,
-        });
-        markSuccess();
-      } catch (e: any) {
-        const msg = e?.message || '';
-
-        // "already been used" means the vote was actually recorded on a prior attempt
-        if (msg.includes('already been used')) { markSuccess(); return; }
-
-        if (n < MAX) {
-          // Tell user their payment was received and we're still confirming —
-          // NOT a generic "Retrying" that sounds like something went wrong.
-          toast({
-            title: `Payment received — confirming vote… (${n}/${MAX})`,
-            description: "Please stay on this page.",
-          });
-          // Increase wait time on each retry so the backend's internal Paystack
-          // retry loop (up to 8 s) has time to complete before we try again.
-          await new Promise(r => setTimeout(r, n * 3000));
-          return attempt(n + 1);
-        }
-
-        // All retries exhausted.  Save to localStorage for admin recovery,
-        // but show the user an actionable modal rather than a fleeting toast.
-        const failed = JSON.parse(localStorage.getItem('failed_votes') || '[]');
-        failed.push({
-          reference,
-          event_slug: slug,
-          category_id: catId,
-          candidate_id: selectedCandidates[catId],
-          quantity: qty,
-          timestamp: new Date().toISOString(),
-        });
-        localStorage.setItem('failed_votes', JSON.stringify(failed));
-
-        setPaymentStep(p => ({ ...p, [catId]: 'select' }));
-        unlockCat(catId);
-
-        // Copy reference to clipboard automatically so user has it
-        try { await navigator.clipboard.writeText(reference); } catch {}
-
-        // Persistent, high-visibility toast with the reference front-and-centre
-        toast({
-          title: "⚠️ Payment received — vote pending",
-          description: `Your payment went through but we couldn't confirm your vote automatically. Reference: ${reference} (copied to clipboard). Please contact support with this reference and we'll cast your vote manually.`,
-          variant: "destructive",
-          duration: 60000,  // stays for 60 seconds so user can read and screenshot it
-        });
+        const r = await fetch(`${API}/payments/verify/${reference}/`, { headers: { 'Content-Type': 'application/json' } });
+        const d = await r.json();
+        if (d.status === 'success') return true;
+        if (n < 4) { await new Promise(r => setTimeout(r, n * 1000)); return verifyPayment(n + 1); }
+        return false;
+      } catch {
+        if (n < 4) { await new Promise(r => setTimeout(r, n * 1000)); return verifyPayment(n + 1); }
+        return false;
       }
     };
 
+    const paymentVerified = await verifyPayment(1);
+    if (!paymentVerified) {
+      // Payment didn't verify — save ref so admin can recover, unblock UI
+      const failed = JSON.parse(localStorage.getItem('failed_votes') || '[]');
+      failed.push({ reference, event_slug: slug, category_id: catId, candidate_id: selectedCandidates[catId], quantity: qty, timestamp: new Date().toISOString(), reason: 'payment_verify_failed' });
+      localStorage.setItem('failed_votes', JSON.stringify(failed));
+      setPaymentStep(p => ({ ...p, [catId]: 'select' })); unlockCat(catId);
+      toast({ title: 'Payment confirmed but could not verify yet', description: `Save your ref: ${reference}. Contact support if votes don't appear.`, variant: 'destructive', duration: 20000 });
+      return;
+    }
+
+    // Step 2: cast the vote now that payment is verified
+    const attempt = async (n: number): Promise<void> => {
+      try {
+        await castVote({ event_slug: slug!, category_id: catId, candidate_ids: [selectedCandidates[catId]], payment_ref: reference, quantity: qty });
+        setVotedCategories(p => [...p, catId]); setPaymentStep(p => ({ ...p, [catId]: 'done' })); fireConfetti(); refetch();
+        toast({ title: 'Votes cast! 🎉', description: `${qty} vote(s) recorded.` });
+        setTimeout(() => { setPaymentStep(p => ({ ...p, [catId]: 'select' })); setSelectedCandidates(p => ({ ...p, [catId]: '' })); setVoteQuantity(p => ({ ...p, [catId]: 1 })); unlockCat(catId); }, 1500);
+      } catch (e: any) {
+        const msg = e?.message || '';
+        // Already cast — treat as success
+        if (msg.includes('already been used') || msg.includes('already cast')) {
+          setVotedCategories(p => [...p, catId]); setPaymentStep(p => ({ ...p, [catId]: 'done' })); fireConfetti(); refetch();
+          toast({ title: 'Votes cast! 🎉' });
+          setTimeout(() => { setPaymentStep(p => ({ ...p, [catId]: 'select' })); setSelectedCandidates(p => ({ ...p, [catId]: '' })); setVoteQuantity(p => ({ ...p, [catId]: 1 })); unlockCat(catId); }, 1500);
+          return;
+        }
+        if (n < MAX) {
+          toast({ title: `Vote recording... (attempt ${n}/${MAX})`, description: 'Please wait, do not close this page.' });
+          await new Promise(r => setTimeout(r, Math.min(n * 1200, 5000)));
+          return attempt(n + 1);
+        }
+        // All retries exhausted — save for admin recovery and unblock UI immediately
+        const failed = JSON.parse(localStorage.getItem('failed_votes') || '[]');
+        failed.push({ reference, event_slug: slug, category_id: catId, candidate_id: selectedCandidates[catId], quantity: qty, timestamp: new Date().toISOString(), reason: msg });
+        localStorage.setItem('failed_votes', JSON.stringify(failed));
+        setPaymentStep(p => ({ ...p, [catId]: 'select' })); unlockCat(catId);
+        toast({
+          title: 'Payment received — vote pending',
+          description: `Your payment went through. Save ref: ${reference}. Admin will recover your vote.`,
+          variant: 'destructive',
+          duration: 30000,
+        });
+      }
+    };
     await attempt(1);
   };
 

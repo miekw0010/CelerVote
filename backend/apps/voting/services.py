@@ -105,11 +105,11 @@ class FraudDetector:
 
 class VoteCaster:
 
-    def __init__(self, event: Event, voter, request, voter_group=None):
+    def __init__(self, event: Event, voter, request=None, voter_group=None, ip=None):
         self.event       = event
         self.voter       = voter
         self.request     = request
-        self.ip          = get_client_ip(request)
+        self.ip          = ip or (get_client_ip(request) if request else '0.0.0.0')
         self.voter_group = voter_group
 
     @transaction.atomic
@@ -141,84 +141,42 @@ class VoteCaster:
             verified  = cache.get(cache_key)
 
             if not verified:
-                import time as _time
-                import logging as _logging
-                _log = _logging.getLogger(__name__)
-
-                data = None
-                last_exc = None
-
-                # ROOT-CAUSE FIX: Paystack's inline popup callback fires the moment the
-                # user completes the payment UI, but the transaction can still be "pending"
-                # on Paystack's servers for 1-5 seconds. The original code verified once,
-                # got "pending", and returned an error — money deducted, vote never cast.
-                # We now retry up to 4 times (8 s max) before giving up.
-                for _attempt in range(4):
-                    try:
-                        resp = _requests.get(
-                            f'https://api.paystack.co/transaction/verify/{payment_ref}',
-                            headers={'Authorization': f'Bearer {settings.PAYSTACK_SECRET_KEY}'},
-                            timeout=10,
-                        )
-                        data = resp.json()
-                        tx_status = data.get('data', {}).get('status', '')
-
-                        if data.get('status') and tx_status == 'success':
-                            # Confirmed — proceed to cast the vote
-                            break
-                        elif tx_status == 'pending':
-                            # Not settled yet — wait 2 s and retry
-                            _log.info(
-                                f'Paystack ref {payment_ref} still pending '
-                                f'(attempt {_attempt + 1}/4), retrying in 2 s…'
-                            )
-                            _time.sleep(2)
-                            data = None
-                            continue
-                        else:
-                            # Genuine failure: abandoned, declined, etc. — don't retry
-                            return {
-                                'success': False,
-                                'error': 'Payment not verified. Please complete payment before voting.',
-                            }
-
-                    except Exception as exc:
-                        last_exc = exc
-                        _log.warning(
-                            f'Paystack verify network error '
-                            f'(attempt {_attempt + 1}/4): {exc}'
-                        )
-                        _time.sleep(1)
-
-                # After all retries — did we get a confirmed success?
-                if data is None or not (data.get('status') and data.get('data', {}).get('status') == 'success'):
-                    if last_exc:
-                        _log.error(f'Paystack verify failed after 4 retries for {payment_ref}: {last_exc}')
-                        return {'success': False, 'error': 'Could not verify payment. Please try again.'}
-                    return {
-                        'success': False,
-                        'error': 'Payment not yet settled by Paystack. Please wait a moment and try again.',
-                    }
-
-                # Verify amount matches expected price
-                paid_amount  = data['data'].get('amount', 0)
-                expected_min = int(float(self.event.price_per_vote) * 100)
-                if paid_amount < expected_min:
-                    return {'success': False, 'error': 'Payment amount does not match the vote price.'}
-
-                # Cache the verified result so repeat calls within 10 min are instant
-                cache.set(cache_key, True, timeout=600)
-
-                # Update the Payment record to SUCCESS
                 try:
-                    from apps.payments.models import Payment as PaymentModel
-                    PaymentModel.objects.filter(reference=payment_ref).update(
-                        status=PaymentModel.Status.SUCCESS,
-                        paystack_id=str(data.get('data', {}).get('id', '')),
-                        channel=data.get('data', {}).get('channel', ''),
+                    resp = _requests.get(
+                        f'https://api.paystack.co/transaction/verify/{payment_ref}',
+                        headers={'Authorization': f'Bearer {settings.PAYSTACK_SECRET_KEY}'},
+                        timeout=10,
                     )
-                except Exception as pe:
-                    _log.warning(f'Payment record update failed (non-fatal): {pe}')
+                    data = resp.json()
+                    if not (data.get('status') and data.get('data', {}).get('status') == 'success'):
+                        return {'success': False, 'error': 'Payment not verified. Please complete payment before voting.'}
+
+                    paid_amount  = data['data'].get('amount', 0)
+                    expected_min = int(float(self.event.price_per_vote) * 100)
+                    if paid_amount < expected_min:
+                        return {'success': False, 'error': 'Payment amount does not match the vote price.'}
+
+                    # Cache the verified result — won't change for a valid ref
+                    cache.set(cache_key, True, timeout=600)
+
+                    # Update Payment record to success
+                    try:
+                        from apps.payments.models import Payment as PaymentModel
+                        PaymentModel.objects.filter(
+                            reference=payment_ref
+                        ).update(
+                            status=PaymentModel.Status.SUCCESS,
+                            paystack_id=str(data.get('data', {}).get('id', '')),
+                            channel=data.get('data', {}).get('channel', ''),
+                        )
+                    except Exception as pe:
+                        import logging
+                        logging.getLogger(__name__).warning(f'Payment status update failed: {pe}')
+
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).error(f'Paystack verify error: {e}')
+                    return {'success': False, 'error': 'Could not verify payment. Please try again.'}
 
         session     = self._get_or_create_session()
 
@@ -453,7 +411,7 @@ class VoteCaster:
         }
 
     def _get_or_create_session(self) -> VoteSession:
-        fingerprint = get_device_fingerprint(self.request)
+        fingerprint = get_device_fingerprint(self.request) if self.request else self.ip
 
         # select_for_update() locks the row so two simultaneous requests
         # can't both pass _check_vote_limit before either commits.
@@ -482,7 +440,7 @@ class VoteCaster:
                 voter_phone=getattr(self.voter, 'phone', None),
                 voter_name=getattr(self.voter, 'name', None),
                 ip_address=self.ip,
-                user_agent=self.request.META.get('HTTP_USER_AGENT', '')[:500],
+                user_agent=self.request.META.get('HTTP_USER_AGENT', '')[:500] if self.request else '',
                 device_fingerprint=fingerprint,
             )
         return session
