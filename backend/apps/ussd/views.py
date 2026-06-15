@@ -49,20 +49,38 @@ def _get_nalo_token():
     cached = cache.get('nalo_api_token')
     if cached:
         return cached
+    auth_key      = getattr(settings, 'NALO_CLIENT_ID', '')      # "Basic xxxx..."
+    client_secret = getattr(settings, 'NALO_CLIENT_SECRET', '')
+    logger.info(f'Nalo token: auth_key={bool(auth_key)} secret={bool(client_secret)}')
+    if not auth_key:
+        logger.error('NALO_CLIENT_ID missing from environment')
+        return None
     try:
+        # NALO_CLIENT_ID is already the full Authorization header value
         resp = _requests.post(
             NALO_TOKEN_URL,
-            json={
-                'client_id':     settings.NALO_CLIENT_ID,
-                'client_secret': settings.NALO_CLIENT_SECRET,
+            headers={
+                'Authorization': auth_key,
+                'Content-Type':  'application/json',
             },
+            json={'client_secret': client_secret} if client_secret else {},
             timeout=10,
         )
+        logger.info(f'Nalo token response: {resp.status_code} {resp.text[:200]}')
         data = resp.json()
-        token = data.get('token') or data.get('access_token') or data.get('data', {}).get('token')
+        token = (
+            data.get('token') or
+            data.get('access_token') or
+            data.get('data', {}).get('token') or
+            data.get('data', {}).get('access_token')
+        )
         if token:
             cache.set('nalo_api_token', token, timeout=3000)
             return token
+        # If the auth_key itself IS the bearer token (some APIs work this way)
+        # fall back to using it directly for collection calls
+        logger.warning(f'Nalo: no token in response, will use auth_key directly')
+        return auth_key
     except Exception as e:
         logger.error(f'Nalo token error: {e}')
     return None
@@ -92,7 +110,7 @@ def _trigger_momo_payment(msisdn, amount, reference, description):
             timeout=15,
         )
         data = resp.json()
-        logger.info(f'Nalo collection response: {data}')
+        logger.info(f'Nalo collection status={resp.status_code} response: {resp.text[:300]}')
         # Nalo returns status true/success on acceptance
         return data.get('status') in (True, 'true', 'success', 'True', 200) or resp.status_code in (200, 201, 202)
     except Exception as e:
