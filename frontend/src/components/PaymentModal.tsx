@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { getAccessToken } from "../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
-declare const PaystackPop: any;
+declare const Paystack: any;
 import {
   X, Shield, CreditCard, Smartphone, Lock,
   CheckCircle2, Loader2, ChevronRight, AlertCircle
@@ -220,7 +220,7 @@ export function PaymentModal({
       verifiedRef.current = false;
 
       // ── Step 2: Open Paystack with V2 (more reliable) ──
-      const paystack = new PaystackPop();
+      const paystack = new Paystack(); 
       paystack.newTransaction({
         key: PUBLIC_KEY,
         email: effectiveEmail,
