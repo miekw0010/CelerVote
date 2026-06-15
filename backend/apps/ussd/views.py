@@ -91,7 +91,7 @@ def _get_nalo_token():
             token = data['token']
         
         if token:
-            cache.set('nalo_api_token', token, timeout=3000)  # 50 minutes
+            cache.set('nalo_api_token', token, timeout=3000)
             logger.info(f'Nalo token obtained and cached: {token[:50]}...')
             return token
         
@@ -107,19 +107,20 @@ def _generate_trans_hash(merchant_id, account_number, amount, reference):
     """
     Generate HMAC SHA256 hash for NALOPAY verification.
     Order of fields: merchant_id, account_number, amount, reference
+    Amount must have exactly 2 decimal places (e.g., "1.00", "0.50")
     """
     client_secret = getattr(settings, 'NALO_CLIENT_SECRET', '')
     if not client_secret:
         logger.error('NALO_CLIENT_SECRET missing for trans_hash generation')
         return ''
     
-    # Convert amount to string (keep as decimal string)
-    amount_str = str(amount)
+    # Format amount with EXACTLY TWO decimal places (matching documentation)
+    amount_str = f"{float(amount):.2f}"
     
     # Concatenate fields in the required order (NO separators)
     message = f"{merchant_id}{account_number}{amount_str}{reference}"
     
-    logger.debug(f"Message for trans_hash: {message}")
+    logger.info(f"trans_hash message: {message}")
     
     # Generate HMAC SHA256
     trans_hash = hmac.new(
@@ -128,7 +129,7 @@ def _generate_trans_hash(merchant_id, account_number, amount, reference):
         hashlib.sha256
     ).hexdigest()
     
-    logger.debug(f'Generated trans_hash for {reference}: {trans_hash[:16]}...')
+    logger.info(f'Generated trans_hash for {reference}: {trans_hash}')
     return trans_hash
 
 
@@ -166,10 +167,10 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
         
         network_value = network_map.get(network.upper(), 'MTN')
         
-        # Keep amount as decimal (matching their example)
-        amount_decimal = float(amount)
+        # Amount as decimal with 2 decimal places
+        amount_decimal = round(float(amount), 2)
         
-        # Generate trans_hash using LOCAL format account_number and decimal amount
+        # Generate trans_hash using formatted amount (with 2 decimals)
         merchant_id = getattr(settings, 'NALOPAY_MERCHANT_ID', '')
         trans_hash = _generate_trans_hash(merchant_id, account_number, amount_decimal, reference)
         
@@ -177,12 +178,12 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
             'merchant_id': merchant_id,
             'service_name': 'MOMO_TRANSACTION',
             'trans_hash': trans_hash,
-            'account_number': account_number,  # Local format: 0592377833
+            'account_number': account_number,
             'account_name': account_name,
             'network': network_value,
-            'amount': amount_decimal,  # Decimal: 0.5, 1.0, etc.
+            'amount': amount_decimal,
             'reference': reference,
-            'callback': f"{getattr(settings, 'BACKEND_URL', 'https://celervote.up.railway.app').rstrip('/')}/api/v1/ussd/payment-callback/",
+            'callback': getattr(settings, 'BACKEND_URL', 'https://celervote.up.railway.app').rstrip('/') + '/api/v1/ussd/payment-callback/',
             'description': description,
             'extra_data': {
                 'source': 'ussd',
@@ -191,14 +192,12 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
             }
         }
         
-        # Use 'token' header, NOT 'Authorization' header
         headers = {
             'Content-Type': 'application/json',
             'token': token
         }
         
         logger.info(f'Nalo collection payload: {payload}')
-        logger.info(f'Nalo collection headers: token: {token[:20]}...')
         
         resp = _requests.post(
             NALO_COLLECT_URL,
@@ -239,7 +238,6 @@ def _send_sms_confirmation(msisdn, cand_name, qty, reference):
             logger.info(f'SMS not sent (no token): {msg}')
             return
         
-        # Use 'token' header for SMS as well
         headers = {
             'Content-Type': 'application/json',
             'token': token
