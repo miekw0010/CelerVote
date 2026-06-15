@@ -185,6 +185,11 @@ ARKESEL_OTP_API_KEY = config('ARKESEL_OTP_API_KEY', default='')
 ARKESEL_SENDER_ID   = config('ARKESEL_SENDER_ID', default='CelerVote')
 
 PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')
+
+# Nalo MoMo payments (USSD)
+NALO_CLIENT_ID     = config('NALO_CLIENT_ID', default='')
+NALO_CLIENT_SECRET = config('NALO_CLIENT_SECRET', default='')
+BACKEND_URL        = config('BACKEND_URL', default='https://celervote.up.railway.app')
 PAYSTACK_PUBLIC_KEY = config('PAYSTACK_PUBLIC_KEY', default='')
 PAYSTACK_BASE_URL = config('PAYSTACK_BASE_URL', default='https://api.paystack.co')
 
