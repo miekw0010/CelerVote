@@ -89,8 +89,6 @@ def _get_nalo_token():
             token = data['data']['token']
         elif data.get('token'):
             token = data['token']
-        elif data.get('access_token'):
-            token = data['access_token']
         
         if token:
             cache.set('nalo_api_token', token, timeout=3000)  # 50 minutes
@@ -115,7 +113,7 @@ def _generate_trans_hash(merchant_id, account_number, amount, reference):
         logger.error('NALO_CLIENT_SECRET missing for trans_hash generation')
         return ''
     
-    # Convert amount to string (no decimal issues)
+    # Convert amount to string (keep as decimal string)
     amount_str = str(amount)
     
     # Concatenate fields in the required order (NO separators)
@@ -148,10 +146,10 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
         # Format phone number - remove + and spaces
         clean_phone = msisdn.replace('+', '').replace(' ', '')
         
-        # Use international format (233XXXXXXXXX) for NALOPAY
-        if clean_phone.startswith('0'):
-            account_number = '233' + clean_phone[1:]
-        elif clean_phone.startswith('233'):
+        # Use LOCAL format (0XXXXXXXXX) for NALOPAY (matching their example)
+        if clean_phone.startswith('233'):
+            account_number = '0' + clean_phone[3:]  # 233592377833 → 0592377833
+        elif clean_phone.startswith('0'):
             account_number = clean_phone
         else:
             account_number = clean_phone
@@ -168,18 +166,21 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
         
         network_value = network_map.get(network.upper(), 'MTN')
         
-        # Generate trans_hash
+        # Keep amount as decimal (matching their example)
+        amount_decimal = float(amount)
+        
+        # Generate trans_hash using LOCAL format account_number and decimal amount
         merchant_id = getattr(settings, 'NALOPAY_MERCHANT_ID', '')
-        trans_hash = _generate_trans_hash(merchant_id, account_number, amount, reference)
+        trans_hash = _generate_trans_hash(merchant_id, account_number, amount_decimal, reference)
         
         payload = {
             'merchant_id': merchant_id,
             'service_name': 'MOMO_TRANSACTION',
             'trans_hash': trans_hash,
-            'account_number': account_number,
+            'account_number': account_number,  # Local format: 0592377833
             'account_name': account_name,
             'network': network_value,
-            'amount': amount,
+            'amount': amount_decimal,  # Decimal: 0.5, 1.0, etc.
             'reference': reference,
             'callback': f"{getattr(settings, 'BACKEND_URL', 'https://celervote.up.railway.app').rstrip('/')}/api/v1/ussd/payment-callback/",
             'description': description,
@@ -190,10 +191,10 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
             }
         }
         
-        # IMPORTANT: Use 'token' header, NOT 'Authorization' header
+        # Use 'token' header, NOT 'Authorization' header
         headers = {
             'Content-Type': 'application/json',
-            'token': token  # NALOPAY expects 'token' header, not 'Authorization'
+            'token': token
         }
         
         logger.info(f'Nalo collection payload: {payload}')
