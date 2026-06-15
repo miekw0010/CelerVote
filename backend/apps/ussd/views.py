@@ -83,7 +83,7 @@ def _get_nalo_token():
         data = resp.json()
         logger.info(f'Nalo token response body: {data}')
         
-        # Extract token from response (handle different response formats)
+        # Extract token from response
         token = None
         if data.get('success') and data.get('data', {}).get('token'):
             token = data['data']['token']
@@ -91,12 +91,10 @@ def _get_nalo_token():
             token = data['token']
         elif data.get('access_token'):
             token = data['access_token']
-        elif data.get('data', {}).get('access_token'):
-            token = data['data']['access_token']
         
         if token:
             cache.set('nalo_api_token', token, timeout=3000)  # 50 minutes
-            logger.info('Nalo token obtained and cached')
+            logger.info(f'Nalo token obtained and cached: {token[:50]}...')
             return token
         
         logger.error(f'Nalo: could not extract token from response: {data}')
@@ -192,14 +190,14 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
             }
         }
         
-        # IMPORTANT: Use Bearer token, NOT Basic auth
+        # IMPORTANT: Use 'token' header, NOT 'Authorization' header
         headers = {
             'Content-Type': 'application/json',
-            'Authorization': f'Bearer {token}'
+            'token': token  # NALOPAY expects 'token' header, not 'Authorization'
         }
         
         logger.info(f'Nalo collection payload: {payload}')
-        logger.info(f'Nalo collection headers: Authorization: Bearer {token[:20]}...')
+        logger.info(f'Nalo collection headers: token: {token[:20]}...')
         
         resp = _requests.post(
             NALO_COLLECT_URL,
@@ -240,9 +238,10 @@ def _send_sms_confirmation(msisdn, cand_name, qty, reference):
             logger.info(f'SMS not sent (no token): {msg}')
             return
         
+        # Use 'token' header for SMS as well
         headers = {
             'Content-Type': 'application/json',
-            'Authorization': f'Bearer {token}'
+            'token': token
         }
         
         clean_phone = msisdn.replace('+', '').replace(' ', '')
