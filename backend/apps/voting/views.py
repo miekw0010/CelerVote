@@ -149,6 +149,10 @@ class CastVoteView(APIView):
             quantity=data.get('quantity', 1),
         )
 
+        if not result['success']:
+            import logging
+            logging.getLogger(__name__).error(f"cast_vote FAILED: {result.get('error')} | ref={data.get('payment_ref')} | event={data.get('event_slug')} | cat={data.get('category_id')}")
+
         if result['success']:
             # ── Mark voter roll entry as used ──
             voter_roll_id = None
