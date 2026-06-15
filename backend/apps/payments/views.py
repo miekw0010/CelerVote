@@ -123,9 +123,9 @@ class VerifyPaymentView(APIView):
                 'message':      f'Payment successful! You can now cast {payment.votes_bought} vote(s).',
             })
         else:
-            payment.status = Payment.Status.FAILED
-            payment.save(update_fields=['status'])
-            return Response({'status': 'failed', 'message': 'Payment verification failed.'}, status=400)
+    # Don't mark as FAILED - Paystack may just not have settled yet
+    # The webhook will mark SUCCESS when it arrives
+            return Response({'status': 'pending', 'message': 'Payment not yet confirmed. Please wait.'}, status=200)
 
 
 class PaymentStatusView(APIView):

@@ -479,9 +479,14 @@ export function PaymentModal({
                     <div className="w-16 h-16 rounded-full bg-[#C9A84C]/10 border border-[#C9A84C]/20 flex items-center justify-center">
                       <Loader2 className="w-8 h-8 text-[#C9A84C] animate-spin" />
                     </div>
-                    <div className="text-center">
-                      <p className="font-semibold text-white">Processing Payment</p>
-                      <p className="text-xs text-[#64748b] mt-1">Complete payment in the Paystack window</p>
+                    <div className="text-center space-y-2">
+                      <p className="font-semibold text-white">Waiting for payment</p>
+                      <p className="text-xs text-[#94a3b8]">
+                        📱 <strong>Mobile Money users:</strong> check your phone for a PIN prompt and approve it.
+                      </p>
+                      <p className="text-xs text-[#64748b] mt-1">
+                        Mobile Money can take up to 3 minutes. Do not close this window.
+                      </p>
                     </div>
                   </motion.div>
                 )}
