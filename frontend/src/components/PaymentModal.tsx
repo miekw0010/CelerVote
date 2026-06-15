@@ -122,36 +122,45 @@ export function PaymentModal({
       const data      = await res.json();
       const reference = data.reference;
 
-      // ── Step 2: Open Paystack with backend reference ──
-      const handler = PaystackPop.setup({
-        key:      PUBLIC_KEY,
-        email:    effectiveEmail,
-        amount:   Math.round(totalAmount * 100),
-        currency: "GHS",
-        ref:      reference,
-        channels: ["card", "mobile_money", "bank_transfer"],
-        label:    "CelerVote",
-        metadata: {
-          custom_fields: [
-            { display_name: "Event",     variable_name: "event",     value: eventTitle    },
-            { display_name: "Candidate", variable_name: "candidate", value: candidateName },
-            { display_name: "Votes",     variable_name: "votes",     value: String(quantity) },
-          ]
-        },
-        callback: (paystackRes: any) => {
-          setStep("success");
-          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
-          setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
-          setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.8 }, colors: ["#01003c", "#C9A84C"] }), 500);
-          setTimeout(() => {
-            onSuccess(paystackRes.reference || reference);
-          }, 1800);
-        },
-        onClose: () => {
-          setStep("review");
-        },
-      });
-      handler.openIframe();
+     // ── Step 2: Open Paystack with V2 (more reliable) ──
+const paystack = new PaystackPop();
+paystack.newTransaction({
+  key:      PUBLIC_KEY,
+  email:    effectiveEmail,
+  amount:   Math.round(totalAmount * 100),
+  currency: "GHS",
+  ref:      reference,
+  channels: ["card", "mobile_money", "bank_transfer"],
+  label:    "CelerVote",
+  metadata: {
+    custom_fields: [
+      { display_name: "Event",     variable_name: "event",     value: eventTitle    },
+      { display_name: "Candidate", variable_name: "candidate", value: candidateName },
+      { display_name: "Votes",     variable_name: "votes",     value: String(quantity) },
+    ]
+  },
+  onSuccess: (transaction: any) => {
+    // V2's reliable success callback
+    console.log("Payment successful!", transaction.reference);
+    setStep("success");
+    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
+    setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
+    setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.8 }, colors: ["#01003c", "#C9A84C"] }), 500);
+    setTimeout(() => {
+      onSuccess(transaction.reference || reference);
+    }, 1800);
+  },
+  onCancel: () => {
+    console.log("Payment cancelled");
+    setStep("review");
+  },
+  onError: (error: any) => {
+    console.error("Payment error:", error);
+    setErrMsg(error.message || "Payment failed to load");
+    setStep("failed");
+  }
+});
+// Note: No .openIframe() needed with V2!
 
     } catch (err: any) {
       setErrMsg(err.message || "Payment initialization failed.");
