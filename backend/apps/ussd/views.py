@@ -60,7 +60,6 @@ def _get_nalo_token():
         return None
     
     try:
-        # Use merchant_id for token generation (correct format)
         payload = {'merchant_id': merchant_id} if merchant_id else {}
         
         resp = _requests.post(
@@ -76,11 +75,10 @@ def _get_nalo_token():
         
         if resp.status_code != 200:
             logger.warning(f'Nalo token HTTP error: {resp.status_code}')
-            return auth_key  # Fallback to using auth_key directly
+            return auth_key
         
         data = resp.json()
         
-        # Try different possible token field names
         token = (
             data.get('token') or
             data.get('access_token') or
@@ -89,11 +87,10 @@ def _get_nalo_token():
         )
         
         if token:
-            cache.set('nalo_api_token', token, timeout=3000)  # 50 minutes
+            cache.set('nalo_api_token', token, timeout=3000)
             logger.info('Nalo token obtained and cached')
             return token
         
-        # If no token but response is success, use auth_key as fallback
         if data.get('success'):
             logger.info('Nalo: using auth_key directly as token')
             return auth_key
@@ -117,7 +114,6 @@ def _trigger_momo_payment(msisdn, amount, reference, description):
         return False
     
     try:
-        # Format phone number (remove + if present)
         clean_phone = msisdn.replace('+', '').replace(' ', '')
         
         payload = {
@@ -125,16 +121,18 @@ def _trigger_momo_payment(msisdn, amount, reference, description):
             'amount': str(amount),
             'reference': reference,
             'description': description,
+            'service_name': 'MOMO_TRANSACTION',  # ← FIXED: Added correct service name
             'callback_url': f"{getattr(settings, 'BACKEND_URL', 'https://celervote.up.railway.app').rstrip('/')}/api/v1/ussd/payment-callback/",
         }
         
-        # Try Bearer token first, fallback to Basic Auth
         headers = {'Content-Type': 'application/json'}
         
         if token.startswith('Basic '):
             headers['Authorization'] = token
         else:
             headers['Authorization'] = f'Bearer {token}'
+        
+        logger.info(f'Nalo collection payload: {payload}')
         
         resp = _requests.post(
             NALO_COLLECT_URL,
@@ -143,11 +141,10 @@ def _trigger_momo_payment(msisdn, amount, reference, description):
             timeout=15,
         )
         
-        logger.info(f'Nalo collection response: {resp.status_code}')
+        logger.info(f'Nalo collection response: {resp.status_code} - {resp.text[:300]}')
         
         if resp.status_code in (200, 201, 202):
             data = resp.json()
-            # Nalo returns status true/success on acceptance
             is_success = (
                 data.get('status') in (True, 'true', 'success', 'True', 200) or
                 data.get('success') in (True, 'true', 'success', 'True') or
@@ -173,7 +170,6 @@ def _send_sms_confirmation(msisdn, cand_name, qty, reference):
     try:
         msg = f"CelerVote: Your {qty} vote(s) for {cand_name} have been recorded! Ref: {reference[-8:]}. Thank you."
         
-        # Try to send via Nalo SMS if available
         token = _get_nalo_token()
         if not token:
             logger.info(f'SMS not sent (no token): {msg}')
@@ -218,7 +214,6 @@ class USSDView(View):
 
         state = gs(session_id)
 
-        # ── New session ───────────────────────────────────────────────────
         if not userdata or not state:
             cs(session_id)
             ss(session_id, {'level': 'home'})
@@ -230,7 +225,6 @@ class USSDView(View):
 
         level = state.get('level')
 
-        # ── HOME ──────────────────────────────────────────────────────────
         if level == 'home':
             if userdata == '1':
                 return self._show_events(uid, msisdn, session_id, state)
@@ -239,7 +233,6 @@ class USSDView(View):
                 return cont(uid, msisdn, "Enter the 6-character\ncandidate code:")
             return end(uid, msisdn, "Invalid choice. Dial again.")
 
-        # ── QUICK VOTE ────────────────────────────────────────────────────
         if level == 'quick_code':
             return self._handle_quick_code(uid, msisdn, session_id, state, userdata)
         if level == 'quick_qty':
@@ -247,7 +240,6 @@ class USSDView(View):
         if level == 'quick_confirm':
             return self._handle_quick_confirm(uid, msisdn, session_id, state, userdata, msisdn)
 
-        # ── BROWSE FLOW ───────────────────────────────────────────────────
         if level == 'events':
             return self._handle_event_choice(uid, msisdn, session_id, state, userdata)
         if level == 'categories':
@@ -261,7 +253,6 @@ class USSDView(View):
 
         return end(uid, msisdn, "Session expired. Dial again.")
 
-    # ── QUICK VOTE: lookup candidate by code ─────────────────────────────────
     def _handle_quick_code(self, uid, msisdn, session_id, state, userdata):
         code = userdata.upper().strip()
         if len(code) != 6:
@@ -327,7 +318,6 @@ class USSDView(View):
             return end(uid, msisdn, "Invalid input. Dial again.")
         return self._cast_or_pay(uid, msisdn, session_id, state, phone)
 
-    # ── BROWSE FLOW ───────────────────────────────────────────────────────────
     def _show_events(self, uid, msisdn, session_id, state):
         from apps.events.models import Event
         events = list(Event.objects.filter(status='active').order_by('-created_at')[:5])
@@ -454,7 +444,6 @@ class USSDView(View):
             return end(uid, msisdn, "Invalid input. Dial again.")
         return self._cast_or_pay(uid, msisdn, session_id, state, phone)
 
-    # ── Shared quantity input handler ─────────────────────────────────────────
     def _handle_qty_input(self, uid, msisdn, session_id, state, userdata, next_level):
         try:
             qty = int(userdata.strip())
@@ -483,19 +472,16 @@ class USSDView(View):
             f"2. Cancel"
         )
 
-    # ── Cast vote (free) or trigger MoMo payment (paid) ──────────────────────
     def _cast_or_pay(self, uid, msisdn, session_id, state, phone):
         if state.get('is_paid'):
             return self._initiate_payment(uid, msisdn, session_id, state, phone)
         return self._cast_vote(uid, msisdn, session_id, state, phone)
 
     def _initiate_payment(self, uid, msisdn, session_id, state, phone):
-        """Trigger MoMo prompt via Nalo, save pending state, end USSD session."""
         qty   = state.get('quantity', 1)
         total = state.get('total', 0)
         ref   = f'USSD-{uuid.uuid4().hex[:12].upper()}'
 
-        # Save pending payment in cache — callback will use this to cast vote
         pending = {
             'reference':  ref,
             'msisdn':     phone,
@@ -508,7 +494,6 @@ class USSDView(View):
         }
         cache.set(f'ussd_payment:{ref}', pending, timeout=PAYMENT_TTL)
 
-        # Also save to Payment DB record for admin visibility
         try:
             from apps.events.models import Event, Category, Candidate
             from apps.payments.models import Payment
@@ -563,7 +548,6 @@ class USSDView(View):
                 "Please try again or\nvote via: celervote.com"
             )
 
-    # ── Free vote caster ──────────────────────────────────────────────────────
     def _cast_vote(self, uid, msisdn, session_id, state, phone):
         from apps.events.models import Event, Category, Candidate
 
@@ -613,10 +597,6 @@ class USSDView(View):
 # ── Nalo MoMo Payment Callback ────────────────────────────────────────────────
 @method_decorator(csrf_exempt, name='dispatch')
 class NaloPaymentCallbackView(View):
-    """
-    Nalo calls this when the user approves (or rejects) the MoMo prompt.
-    We cast the vote here — this is the real safety net for USSD paid votes.
-    """
 
     def post(self, request):
         try:
@@ -629,7 +609,6 @@ class NaloPaymentCallbackView(View):
         reference = body.get('reference') or body.get('ref') or body.get('externalRef') or body.get('order_id', '')
         status = str(body.get('status', '')).lower()
 
-        # Nalo may use different field names — normalise
         if status in ('success', 'successful', 'completed', 'true', '1', 'approved'):
             paid = True
         else:
@@ -644,10 +623,8 @@ class NaloPaymentCallbackView(View):
                 pass
             return JsonResponse({'status': 'noted'})
 
-        # Look up pending payment from cache
         pending = cache.get(f'ussd_payment:{reference}')
         if not pending:
-            # Fall back to Payment DB record
             try:
                 from apps.payments.models import Payment as PaymentModel
                 pay_obj = PaymentModel.objects.get(reference=reference)
@@ -664,24 +641,21 @@ class NaloPaymentCallbackView(View):
                 logger.error(f'Nalo callback: no pending payment found for ref={reference}: {e}')
                 return JsonResponse({'status': 'error', 'message': 'reference not found'}, status=404)
 
-        # Mark Payment as SUCCESS
         try:
             from apps.payments.models import Payment as PaymentModel
             PaymentModel.objects.filter(reference=reference).update(
                 status=PaymentModel.Status.SUCCESS,
-                paystack_data=body,  # store Nalo callback data here
+                paystack_data=body,
             )
         except Exception as e:
             logger.warning(f'Nalo callback: payment status update failed: {e}')
 
-        # Check if already cast (idempotency)
         from apps.voting.models import Vote
         if Vote.objects.filter(payment_ref=reference).exists():
             logger.info(f'Nalo callback: vote already cast for ref={reference}')
             cache.delete(f'ussd_payment:{reference}')
             return JsonResponse({'status': 'ok', 'message': 'already cast'})
 
-        # Cast the vote
         try:
             from apps.events.models import Event
             from apps.accounts.models import User
@@ -713,7 +687,6 @@ class NaloPaymentCallbackView(View):
             if result.get('success'):
                 logger.info(f'Nalo callback: vote cast successfully for ref={reference}')
                 cache.delete(f'ussd_payment:{reference}')
-                # Send SMS confirmation to voter
                 cand_name = pending.get('cand_name', 'your candidate')
                 _send_sms_confirmation(msisdn, cand_name, pending.get('quantity', 1), reference)
             else:
@@ -725,5 +698,4 @@ class NaloPaymentCallbackView(View):
         return JsonResponse({'status': 'ok'})
 
     def get(self, request):
-        # Some gateways do a GET verification ping
         return JsonResponse({'status': 'ok'})
