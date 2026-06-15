@@ -39,18 +39,11 @@ def cs(sid):       cache.delete(f'nalo:{sid}')
 
 
 def cont(uid, msisdn, msg):
-    """Continue USSD session - user can reply"""
     return JsonResponse({"USERID": uid, "MSISDN": msisdn, "MSG": msg, "MSGTYPE": True})
 
 
 def end(uid, msisdn, msg):
-    """End USSD session - no further input allowed"""
-    return JsonResponse({
-        "USERID": uid,
-        "MSISDN": msisdn,
-        "MSG": msg,
-        "MSGTYPE": False
-    })
+    return JsonResponse({"USERID": uid, "MSISDN": msisdn, "MSG": msg, "MSGTYPE": False})
 
 
 def _get_nalo_token():
@@ -139,25 +132,21 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
     Trigger a MoMo collection prompt on the user's phone via Nalo.
     Returns True if the request was accepted (payment is pending).
     """
-    # Get a fresh token for each payment
     token = _get_nalo_token()
     if not token:
         logger.error('Nalo: could not get API token')
         return False
     
     try:
-        # Format phone number - remove + and spaces
         clean_phone = msisdn.replace('+', '').replace(' ', '')
         
-        # Use LOCAL format (0XXXXXXXXX) for NALOPAY
         if clean_phone.startswith('233'):
-            account_number = '0' + clean_phone[3:]  # 233592377833 → 0592377833
+            account_number = '0' + clean_phone[3:]
         elif clean_phone.startswith('0'):
             account_number = clean_phone
         else:
             account_number = clean_phone
         
-        # Map network names to NALOPAY expected values
         network_map = {
             'MTN': 'MTN',
             'VODAFONE': 'TELECEL',
@@ -168,11 +157,7 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
         }
         
         network_value = network_map.get(network.upper(), 'MTN')
-        
-        # Amount as decimal with 2 decimal places
         amount_decimal = round(float(amount), 2)
-        
-        # Generate trans_hash
         merchant_id = getattr(settings, 'NALOPAY_MERCHANT_ID', '')
         trans_hash = _generate_trans_hash(merchant_id, account_number, amount_decimal, reference)
         
@@ -610,17 +595,17 @@ class USSDView(View):
         cs(session_id)
 
         if ok:
-            # Session ends immediately - user cannot reply
             return end(uid, msisdn,
-                f"✓ Payment initiated!\n"
-                f"Amount: GHS {total:.2f}\n"
-                f"Check phone for MoMo prompt.\n"
-                f"Thank you for voting!"
+                f"Payment request sent!\n"
+                f"Amount: GHS {total:.2f}\n\n"
+                f"Approve the MoMo prompt\non your phone to cast\nyour {qty} vote(s).\n\n"
+                f"Ref: {ref[-8:]}"
             )
         else:
             cache.delete(f'ussd_payment:{ref}')
             return end(uid, msisdn,
-                "Payment failed.\nPlease try again."
+                "Payment initiation failed.\n"
+                "Please try again or\nvote via: celervote.com"
             )
 
     def _cast_vote(self, uid, msisdn, session_id, state, phone):
@@ -674,32 +659,30 @@ class USSDView(View):
 class NaloPaymentCallbackView(View):
 
     def post(self, request):
-        logger.info("=" * 60)
-        logger.info("NALOPAY CALLBACK RECEIVED!")
-        
         try:
             body = json.loads(request.body)
         except Exception:
             body = request.POST.dict()
-        
-        logger.info(f"Callback body: {json.dumps(body, indent=2)}")
-        
-        reference = body.get('reference') or body.get('order_id') or body.get('ref')
-        status = str(body.get('status', '')).upper()
-        
-        if status in ('COMPLETED', 'SUCCESS', 'SUCCESSFUL', 'TRUE', '1'):
+
+        logger.info(f'Nalo callback received: {body}')
+
+        reference = body.get('reference') or body.get('ref') or body.get('externalRef') or body.get('order_id', '')
+        status = str(body.get('status', '')).lower()
+
+        if status in ('success', 'successful', 'completed', 'true', '1', 'approved'):
             paid = True
         else:
             paid = False
-        
+
         if not paid:
-            logger.warning(f'Payment not successful for ref={reference}, status={status}')
+            logger.warning(f'Nalo callback: payment not successful for ref={reference}, status={status}')
+            try:
+                from apps.payments.models import Payment
+                Payment.objects.filter(reference=reference).update(status=Payment.Status.FAILED)
+            except Exception:
+                pass
             return JsonResponse({'status': 'noted'})
-        
-        if not reference:
-            logger.error('No reference found in callback')
-            return JsonResponse({'status': 'error', 'message': 'no reference'}, status=400)
-        
+
         pending = cache.get(f'ussd_payment:{reference}')
         if not pending:
             try:
@@ -707,43 +690,42 @@ class NaloPaymentCallbackView(View):
                 pay_obj = PaymentModel.objects.get(reference=reference)
                 pending = {
                     'reference': reference,
-                    'event_id': str(pay_obj.event_id),
-                    'cat_id': str(pay_obj.category_id),
-                    'cand_id': str(pay_obj.candidate_id),
-                    'quantity': pay_obj.votes_bought or 1,
-                    'msisdn': pay_obj.phone or '',
+                    'event_id':  str(pay_obj.event_id),
+                    'cat_id':    str(pay_obj.category_id),
+                    'cand_id':   str(pay_obj.candidate_id),
+                    'quantity':  pay_obj.votes_bought or 1,
+                    'msisdn':    pay_obj.phone or '',
                     'cand_name': '',
+                    'network':   'MTN',
                 }
-                logger.info(f'Found payment in DB: {pending}')
             except Exception as e:
-                logger.error(f'Payment not found: {e}')
-                return JsonResponse({'status': 'error', 'message': 'payment not found'}, status=404)
-        
+                logger.error(f'Nalo callback: no pending payment found for ref={reference}: {e}')
+                return JsonResponse({'status': 'error', 'message': 'reference not found'}, status=404)
+
         try:
             from apps.payments.models import Payment as PaymentModel
             PaymentModel.objects.filter(reference=reference).update(
                 status=PaymentModel.Status.SUCCESS,
                 paystack_data=body,
             )
-            logger.info(f'Payment {reference} marked as SUCCESS')
         except Exception as e:
-            logger.warning(f'Failed to update payment status: {e}')
-        
+            logger.warning(f'Nalo callback: payment status update failed: {e}')
+
         from apps.voting.models import Vote
         if Vote.objects.filter(payment_ref=reference).exists():
-            logger.info(f'Vote already cast for {reference}')
+            logger.info(f'Nalo callback: vote already cast for ref={reference}')
             cache.delete(f'ussd_payment:{reference}')
             return JsonResponse({'status': 'ok', 'message': 'already cast'})
-        
+
         try:
             from apps.events.models import Event
             from apps.accounts.models import User
             from apps.voting.services import VoteCaster
-            
+
             event = Event.objects.get(id=pending['event_id'])
             msisdn = pending.get('msisdn', '')
             clean = msisdn.strip().replace(' ', '').replace('+', '')
-            
+
             user = None
             if clean:
                 user, _ = User.objects.get_or_create(
@@ -754,26 +736,26 @@ class NaloPaymentCallbackView(View):
                         'is_verified': True,
                     }
                 )
-            
+
             caster = VoteCaster(event=event, voter=user, request=None, ip='127.0.0.1')
             result = caster.cast_vote(
-                category_id=pending['cat_id'],
-                candidate_ids=[pending['cand_id']],
+                category_id=str(pending['cat_id']),
+                candidate_ids=[str(pending['cand_id'])],
                 payment_ref=reference,
-                quantity=pending.get('quantity', 1),
+                quantity=int(pending.get('quantity', 1)),
             )
-            
+
             if result.get('success'):
-                logger.info(f'Vote cast successfully for {reference}')
+                logger.info(f'Nalo callback: vote cast successfully for ref={reference}')
                 cache.delete(f'ussd_payment:{reference}')
                 cand_name = pending.get('cand_name', 'your candidate')
                 _send_sms_confirmation(msisdn, cand_name, pending.get('quantity', 1), reference)
             else:
-                logger.error(f'Vote cast failed: {result.get("error")}')
-                
+                logger.error(f'Nalo callback: vote cast failed for ref={reference}: {result.get("error")}')
+
         except Exception as e:
-            logger.error(f'Exception casting vote: {e}')
-        
+            logger.error(f'Nalo callback: exception casting vote for ref={reference}: {e}')
+
         return JsonResponse({'status': 'ok'})
 
     def get(self, request):
@@ -798,6 +780,7 @@ class CheckPaymentStatusView(View):
                 'payment_status': payment.status,
                 'votes_cast': votes_cast,
                 'amount': str(payment.amount),
+                'currency': payment.currency,
                 'created_at': payment.created_at,
             })
         except Payment.DoesNotExist:
@@ -819,9 +802,11 @@ class CheckPaymentStatusView(View):
         if Vote.objects.filter(payment_ref=reference).exists():
             return JsonResponse({'message': 'Vote already cast'})
         
+        # Update payment status
         payment.status = Payment.Status.SUCCESS
         payment.save()
         
+        # Cast the vote
         clean = payment.phone.replace('+', '').replace(' ', '')
         user, _ = User.objects.get_or_create(
             phone=clean,
@@ -842,6 +827,9 @@ class CheckPaymentStatusView(View):
         )
         
         if result.get('success'):
+            # Send SMS confirmation
+            cand_name = payment.candidate_name if hasattr(payment, 'candidate_name') else 'your candidate'
+            _send_sms_confirmation(payment.phone, cand_name, payment.votes_bought or 1, reference)
             return JsonResponse({'message': 'Vote cast successfully'})
         else:
             return JsonResponse({'error': result.get('error')}, status=400)
