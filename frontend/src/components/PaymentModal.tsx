@@ -36,10 +36,11 @@ export function PaymentModal({
   const [step, setStep]       = useState<"review" | "processing" | "success" | "failed">("review");
   const [errMsg, setErrMsg]   = useState("");
   const [localPhone, setLocalPhone] = useState("");
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const verifiedRef = useRef(false);
+  const currentReferenceRef = useRef<string>("");
 
   // isGuest is fixed on mount — computed once from the initial email value.
-  // We use a ref so it never changes even if email prop updates (which it will
-  // once the user types a phone, causing the parent to rebuild the email).
   const isGuestRef = useRef(!email || email === "voter@celervote.com" || email === "");
   const isGuest = isGuestRef.current;
 
@@ -65,11 +66,104 @@ export function PaymentModal({
       setStep("review");
       setErrMsg("");
       setLocalPhone("");
+      verifiedRef.current = false;
+      currentReferenceRef.current = "";
+      // Stop any existing polling
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
       // Re-evaluate isGuest on fresh open
       isGuestRef.current = !email || email === "voter@celervote.com" || email === "";
     }
   }, [open]);
-  const totalAmount           = pricePerVote * quantity;
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, []);
+
+  const totalAmount = pricePerVote * quantity;
+
+  const checkPaymentStatus = async (ref: string): Promise<boolean> => {
+    try {
+      const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
+      const token = getAccessToken() || "";
+      
+      const res = await fetch(`${API}/payments/status/${ref}/`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      
+      if (data.votes_cast > 0 || data.status === 'success') {
+        verifiedRef.current = true;
+        
+        // Stop polling
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        
+        // Show success UI
+        setStep("success");
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
+        setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
+        setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.8 }, colors: ["#01003c", "#C9A84C"] }), 500);
+        
+        setTimeout(() => {
+          onSuccess(ref);
+        }, 1800);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error("Status check failed:", e);
+      return false;
+    }
+  };
+
+  const startPolling = (reference: string) => {
+    let pollCount = 0;
+    const MAX_POLLS = 12; // 12 * 5 seconds = 60 seconds max
+    
+    // Clear any existing polling
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    
+    pollingRef.current = setInterval(async () => {
+      if (verifiedRef.current) {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        return;
+      }
+      
+      pollCount++;
+      if (pollCount > MAX_POLLS) {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        if (!verifiedRef.current) {
+          setErrMsg("Payment confirmation is taking longer than expected. Please check your votes or contact support.");
+          setStep("failed");
+        }
+        return;
+      }
+      
+      await checkPaymentStatus(reference);
+    }, 5000); // Check every 5 seconds
+  };
 
   const handlePay = async () => {
     // Guest voter — validate phone first
@@ -92,23 +186,24 @@ export function PaymentModal({
       return;
     }
     setStep("processing");
+    
     try {
-      const API   = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
+      const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
       const token = getAccessToken() || "";
 
-// ── Step 1: Initialize payment on backend first ──
       console.log("Initializing payment:", { eventSlug, categoryId, email, quantity });
-      const res   = await fetch(`${API}/payments/initialize/`, {        method:  "POST",
+      const res = await fetch(`${API}/payments/initialize/`, {
+        method: "POST",
         headers: {
-          "Content-Type":  "application/json",
+          "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
         body: JSON.stringify({
-          event_slug:   eventSlug,
-          votes_count:  quantity,
-          email:        effectiveEmail,
-          phone:        effectivePhone ? normalizePhone(effectivePhone) : "",
-          category_id:  categoryId,
+          event_slug: eventSlug,
+          votes_count: quantity,
+          email: effectiveEmail,
+          phone: effectivePhone ? normalizePhone(effectivePhone) : "",
+          category_id: categoryId,
           candidate_id: candidateId,
         }),
       });
@@ -119,50 +214,74 @@ export function PaymentModal({
         throw new Error(err.error || "Failed to initialize payment");
       }
 
-      const data      = await res.json();
+      const data = await res.json();
       const reference = data.reference;
+      currentReferenceRef.current = reference;
+      verifiedRef.current = false;
 
-     // ── Step 2: Open Paystack with V2 (more reliable) ──
-const paystack = new PaystackPop();
-paystack.newTransaction({
-  key:      PUBLIC_KEY,
-  email:    effectiveEmail,
-  amount:   Math.round(totalAmount * 100),
-  currency: "GHS",
-  ref:      reference,
-  channels: ["card", "mobile_money", "bank_transfer"],
-  label:    "CelerVote",
-  metadata: {
-    custom_fields: [
-      { display_name: "Event",     variable_name: "event",     value: eventTitle    },
-      { display_name: "Candidate", variable_name: "candidate", value: candidateName },
-      { display_name: "Votes",     variable_name: "votes",     value: String(quantity) },
-    ]
-  },
-  onSuccess: (transaction: any) => {
-    // V2's reliable success callback
-    console.log("Payment successful!", transaction.reference);
-    setStep("success");
-    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
-    setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
-    setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.8 }, colors: ["#01003c", "#C9A84C"] }), 500);
-    setTimeout(() => {
-      onSuccess(transaction.reference || reference);
-    }, 1800);
-  },
-  onCancel: () => {
-    console.log("Payment cancelled");
-    setStep("review");
-  },
-  onError: (error: any) => {
-    console.error("Payment error:", error);
-    setErrMsg(error.message || "Payment failed to load");
-    setStep("failed");
-  }
-});
-// Note: No .openIframe() needed with V2!
+      // ── Step 2: Open Paystack with V2 (more reliable) ──
+      const paystack = new PaystackPop();
+      paystack.newTransaction({
+        key: PUBLIC_KEY,
+        email: effectiveEmail,
+        amount: Math.round(totalAmount * 100),
+        currency: "GHS",
+        ref: reference,
+        channels: ["card", "mobile_money", "bank_transfer"],
+        label: "CelerVote",
+        metadata: {
+          custom_fields: [
+            { display_name: "Event", variable_name: "event", value: eventTitle },
+            { display_name: "Candidate", variable_name: "candidate", value: candidateName },
+            { display_name: "Votes", variable_name: "votes", value: String(quantity) },
+          ]
+        },
+        onSuccess: (transaction: any) => {
+          console.log("Payment successful!", transaction.reference);
+          verifiedRef.current = true;
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+          setStep("success");
+          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
+          setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
+          setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.8 }, colors: ["#01003c", "#C9A84C"] }), 500);
+          setTimeout(() => {
+            onSuccess(transaction.reference || reference);
+          }, 1800);
+        },
+        onCancel: () => {
+          console.log("Payment cancelled");
+          if (!verifiedRef.current) {
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+              pollingRef.current = null;
+            }
+            setStep("review");
+          }
+        },
+        onError: (error: any) => {
+          console.error("Payment error:", error);
+          if (!verifiedRef.current) {
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+              pollingRef.current = null;
+            }
+            setErrMsg(error.message || "Payment failed to load");
+            setStep("failed");
+          }
+        }
+      });
+      
+      // 🔥 START POLLING - This is the key addition that makes it work like tickets!
+      startPolling(reference);
 
     } catch (err: any) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
       setErrMsg(err.message || "Payment initialization failed.");
       setStep("failed");
     }
@@ -170,9 +289,46 @@ paystack.newTransaction({
 
   const handleClose = () => {
     if (step === "processing") return;
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
     setStep("review");
     setErrMsg("");
     onClose();
+  };
+
+  const manualCheckStatus = async () => {
+    const ref = currentReferenceRef.current;
+    if (!ref) {
+      setErrMsg("No payment reference found.");
+      setStep("failed");
+      return;
+    }
+    
+    setStep("processing");
+    try {
+      const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
+      const token = getAccessToken() || "";
+      const res = await fetch(`${API}/payments/status/${ref}/`, {
+        headers: { "Authorization": `Bearer ${token}` },
+      });
+      const data = await res.json();
+      
+      if (data.votes_cast > 0) {
+        setStep("success");
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
+        setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
+        setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.8 }, colors: ["#01003c", "#C9A84C"] }), 500);
+        setTimeout(() => onSuccess(ref), 1800);
+        return;
+      }
+      setErrMsg("Vote not yet confirmed. Please wait or contact support.");
+      setStep("failed");
+    } catch (e) {
+      setErrMsg("Could not check status. Please try again.");
+      setStep("failed");
+    }
   };
 
   return (
@@ -349,7 +505,7 @@ paystack.newTransaction({
                   </motion.div>
                 )}
 
-                {/* ── Failed Step ── */}
+                {/* ── Failed Step with Manual Check Button ── */}
                 {step === "failed" && (
                   <motion.div key="failed"
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -358,12 +514,21 @@ paystack.newTransaction({
                       <AlertCircle className="w-8 h-8 text-red-400" />
                     </div>
                     <div className="text-center">
-                      <p className="font-bold text-white">Payment Failed</p>
-                      <p className="text-xs text-[#64748b] mt-1">{errMsg || "Something went wrong. Try again."}</p>
+                      <p className="font-bold text-white">Payment Confirmation Delayed</p>
+                      <p className="text-xs text-[#64748b] mt-1">{errMsg || "Your payment may have been processed. Please check your vote status."}</p>
                     </div>
-                    <Button onClick={() => setStep("review")} variant="outline" size="sm">
-                      Try Again
-                    </Button>
+                    <div className="flex gap-3">
+                      <Button 
+                        onClick={manualCheckStatus}
+                        variant="outline" 
+                        size="sm"
+                      >
+                        Check Vote Status
+                      </Button>
+                      <Button onClick={() => setStep("review")} variant="outline" size="sm">
+                        Try Again
+                      </Button>
+                    </div>
                   </motion.div>
                 )}
 
