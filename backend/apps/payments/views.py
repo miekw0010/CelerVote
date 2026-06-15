@@ -128,6 +128,44 @@ class VerifyPaymentView(APIView):
             return Response({'status': 'failed', 'message': 'Payment verification failed.'}, status=400)
 
 
+class PaymentStatusView(APIView):
+    """
+    Check the status of a payment and whether votes have been cast.
+    Used by frontend polling to detect when webhook has completed.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, reference):
+        from apps.voting.models import Vote
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            payment = Payment.objects.get(reference=reference)
+        except Payment.DoesNotExist:
+            logger.warning(f"Payment status check - not found: {reference}")
+            return Response({
+                'error': 'Payment not found',
+                'reference': reference,
+                'votes_cast': 0,
+                'status': 'not_found'
+            }, status=404)
+
+        # Count how many votes were cast using this payment reference
+        votes_cast = Vote.objects.filter(payment_ref=reference).count()
+
+        logger.info(f"Payment status: ref={reference}, votes_cast={votes_cast}, payment_status={payment.status}")
+
+        return Response({
+            'reference': reference,
+            'payment_status': payment.status,
+            'votes_cast': votes_cast,
+            'amount': str(payment.amount),
+            'currency': payment.currency,
+            'status': 'success' if votes_cast > 0 or payment.status == 'success' else payment.status,
+        })
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class PaystackWebhookView(APIView):
     permission_classes = [AllowAny]
@@ -160,11 +198,6 @@ class PaystackWebhookView(APIView):
                 payment_obj = None
 
             # ── 2. AUTO-CAST THE VOTE if it hasn't been cast yet ────────────
-            # Safety net: if the frontend castVote() call failed for any reason
-            # (network drop, Paystack timing race, browser closed), the webhook
-            # fires ~1-3s later and casts the vote itself.
-            # Idempotency guaranteed by Vote.objects.filter(payment_ref=…) check
-            # inside VoteCaster.cast_vote().
             if payment_obj and payment_obj.category_id and payment_obj.candidate_id:
                 from apps.voting.models import Vote
                 already_cast = Vote.objects.filter(payment_ref=reference).exists()
