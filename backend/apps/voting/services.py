@@ -54,54 +54,6 @@ def get_client_ip(request) -> str:
     return request.META.get('REMOTE_ADDR', '')
 
 
-class FraudDetector:
-    RAPID_VOTE_SECONDS = 5
-    DUPLICATE_IP_LIMIT = 50
-
-    def __init__(self, event, ip_address, session):
-        self.event   = event
-        self.ip      = ip_address
-        self.session = session
-        self.flags   = []
-
-    def check_all(self):
-        self._check_rapid_voting()
-        self._check_duplicate_ip()
-        return self.flags
-
-    def _check_rapid_voting(self):
-        cache_key      = f'last_vote:{self.ip}:{self.event.id}'
-        last_vote_time = cache.get(cache_key)
-        if last_vote_time:
-            elapsed = (timezone.now() - last_vote_time).total_seconds()
-            if elapsed < self.RAPID_VOTE_SECONDS:
-                self.flags.append({
-                    'type': FraudFlag.FraudType.RAPID_VOTING,
-                    'description': f'Vote from {self.ip} within {elapsed:.1f}s of previous vote'
-                })
-        cache.set(cache_key, timezone.now(), timeout=60)
-
-    def _check_duplicate_ip(self):
-        count = VoteSession.objects.filter(event=self.event, ip_address=self.ip).count()
-        if count > self.DUPLICATE_IP_LIMIT:
-            self.flags.append({
-                'type': FraudFlag.FraudType.DUPLICATE_IP,
-                'description': f'IP {self.ip} has {count} sessions on this event'
-            })
-
-    def save_flags(self):
-        for f in self.flags:
-            FraudFlag.objects.create(
-                event=self.event,
-                session=self.session,
-                fraud_type=f['type'],
-                description=f['description'],
-                ip_address=self.ip,
-            )
-        if self.flags:
-            self.session.is_flagged = True
-            self.session.save(update_fields=['is_flagged'])
-
 
 class VoteCaster:
 
@@ -126,30 +78,21 @@ class VoteCaster:
         if len(candidates) != len(candidate_ids):
             return {'success': False, 'error': 'One or more invalid candidates.'}
 
-        # ── IDEMPOTENCY CHECK: Prevent double casting ─────────────────────────
-        if payment_ref:
-            existing_votes = Vote.objects.filter(payment_ref=payment_ref).count()
-            if existing_votes > 0:
-                import logging
-                logging.getLogger(__name__).warning(
-                    f'cast_vote called again for ref={payment_ref}, {existing_votes} votes already exist'
-                )
-                # Return success since votes already exist
-                return {
-                    'success': True,
-                    'vote_ids': [],
-                    'message': 'Votes already cast',
-                    'already_cast': True
-                }
-
-        # Verify payment BEFORE creating session
+       # Verify payment BEFORE creating session
         if self.event.is_paid:
             if not payment_ref:
                 return {'success': False, 'error': 'Payment reference required for this event.'}
 
-            # Block reuse of the same reference (second layer of protection)
+            # Block reuse of the same reference
             if Vote.objects.filter(payment_ref=payment_ref).exists():
                 return {'success': False, 'error': 'This payment has already been used to cast a vote.'}
+
+            # USSD payments are collected by Nalo, NOT Paystack.
+            # Paystack has zero record of USSD- refs — verifying them against
+            # Paystack would always return failure. NaloPaymentCallbackView
+            # already marks the Payment SUCCESS before calling cast_vote,
+            # so we just trust the DB status for USSD refs.
+            is_ussd = payment_ref.startswith('USSD-')
 
             # Check payment status in DB first (instant — no external API call)
             # VerifyPaymentView already marks it SUCCESS when Paystack popup closes.
@@ -169,6 +112,9 @@ class VoteCaster:
 
             if not verified:
                 # DB not confirmed yet — call Paystack directly (short timeout)
+                # USSD refs skip this entirely — Paystack never processed them
+                if is_ussd:
+                    return {'success': False, 'error': 'USSD payment not yet confirmed. Please wait for your MoMo prompt.'}
                 import requests as _requests
                 try:
                     resp = _requests.get(

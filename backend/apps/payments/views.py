@@ -18,7 +18,7 @@ paystack = PaystackService()
 class InitializePaymentView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = []  # Relies on django-ratelimit below
+    throttle_classes = []
 
     @method_decorator(ratelimit(key='ip', rate='30/h', method='POST', block=True))
     def post(self, request):
@@ -111,10 +111,10 @@ class VerifyPaymentView(APIView):
         result = paystack.verify_transaction(reference)
 
         if result.get('status') and result['data']['status'] == 'success':
-            payment.status         = Payment.Status.SUCCESS
-            payment.paystack_id    = str(result['data']['id'])
-            payment.channel        = result['data'].get('channel', '')
-            payment.paystack_data  = result['data']
+            payment.status        = Payment.Status.SUCCESS
+            payment.paystack_id   = str(result['data']['id'])
+            payment.channel       = result['data'].get('channel', '')
+            payment.paystack_data = result['data']
             payment.save()
             return Response({
                 'status':       'success',
@@ -123,15 +123,23 @@ class VerifyPaymentView(APIView):
                 'message':      f'Payment successful! You can now cast {payment.votes_bought} vote(s).',
             })
         else:
-            # Don't mark as FAILED - Paystack may just not have settled yet
-            # The webhook will mark SUCCESS when it arrives
-            return Response({'status': 'pending', 'message': 'Payment not yet confirmed. Please wait.'}, status=200)
+            # FIX: Do NOT write FAILED here. Paystack may still be settling
+            # (MoMo takes 1-3 min). Writing FAILED corrupts the Payment record
+            # before the webhook arrives and marks it SUCCESS.
+            tx_status = result.get('data', {}).get('status', 'unknown') if result.get('data') else 'unknown'
+            return Response({
+                'status':          'pending',
+                'paystack_status': tx_status,
+                'message':         'Payment not yet confirmed. Please wait — your vote will be recorded automatically.',
+            }, status=200)
 
 
 class PaymentStatusView(APIView):
     """
-    Check the status of a payment and whether votes have been cast.
-    Used by frontend polling to detect when webhook has completed.
+    Polled by PaymentModal every 5 seconds to detect when webhook has
+    completed and votes have been cast. Returns votes_cast count so the
+    frontend can show success without waiting for the frontend castVote()
+    call to succeed.
     """
     permission_classes = [AllowAny]
 
@@ -143,26 +151,24 @@ class PaymentStatusView(APIView):
         try:
             payment = Payment.objects.get(reference=reference)
         except Payment.DoesNotExist:
-            logger.warning(f"Payment status check - not found: {reference}")
+            logger.warning(f'PaymentStatusView: not found ref={reference}')
             return Response({
-                'error': 'Payment not found',
-                'reference': reference,
+                'error':      'Payment not found',
+                'reference':  reference,
                 'votes_cast': 0,
-                'status': 'not_found'
+                'status':     'not_found',
             }, status=404)
 
-        # Count how many votes were cast using this payment reference
         votes_cast = Vote.objects.filter(payment_ref=reference).count()
-
-        logger.info(f"Payment status: ref={reference}, votes_cast={votes_cast}, payment_status={payment.status}")
+        logger.info(f'PaymentStatusView: ref={reference} votes_cast={votes_cast} status={payment.status}')
 
         return Response({
-            'reference': reference,
+            'reference':      reference,
             'payment_status': payment.status,
-            'votes_cast': votes_cast,
-            'amount': str(payment.amount),
-            'currency': payment.currency,
-            'status': 'success' if votes_cast > 0 or payment.status == 'success' else payment.status,
+            'votes_cast':     votes_cast,
+            'amount':         str(payment.amount),
+            'currency':       payment.currency,
+            'status':         'success' if votes_cast > 0 or payment.status == 'success' else payment.status,
         })
 
 
@@ -184,12 +190,6 @@ class PaystackWebhookView(APIView):
             import logging as _wh_log
             _log = _wh_log.getLogger(__name__)
 
-            # ── FIX: SKIP USSD PAYMENTS ─────────────────────────────────────
-            # USSD payments are handled by NaloPaymentCallbackView, not Paystack webhook
-            if reference and reference.startswith('USSD-'):
-                _log.info(f'Paystack webhook: skipping USSD payment {reference} (handled by NALOPAY)')
-                return Response({'status': 'skipped', 'reason': 'USSD payment'})
-
             # ── 1. Mark Payment record as SUCCESS ────────────────────────────
             payment_obj = None
             try:
@@ -204,7 +204,12 @@ class PaystackWebhookView(APIView):
                 payment_obj = None
 
             # ── 2. AUTO-CAST THE VOTE if it hasn't been cast yet ────────────
-            if payment_obj and payment_obj.category_id and payment_obj.candidate_id:
+            # FIX: USSD payments (ref starts with "USSD-") are handled
+            # exclusively by NaloPaymentCallbackView in ussd/views.py.
+            # If we also cast here, every USSD vote gets doubled.
+            # EVOTE- refs (Paystack web/mobile) are safe to auto-cast here.
+            is_ussd_ref = reference.startswith('USSD-')
+            if payment_obj and payment_obj.category_id and payment_obj.candidate_id and not is_ussd_ref:
                 from apps.voting.models import Vote
                 already_cast = Vote.objects.filter(payment_ref=reference).exists()
                 if not already_cast:

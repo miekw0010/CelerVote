@@ -667,13 +667,6 @@ class NaloPaymentCallbackView(View):
         logger.info(f'Nalo callback received: {body}')
 
         reference = body.get('reference') or body.get('ref') or body.get('externalRef') or body.get('order_id', '')
-        
-        # ── FIX: ONLY PROCESS USSD REFERENCES ─────────────────────────────────
-        # This callback should only handle USSD payment confirmations
-        if reference and not reference.startswith('USSD-'):
-            logger.info(f'Nalo callback: skipping non-USSD reference {reference} (handled by Paystack webhook)')
-            return JsonResponse({'status': 'skipped', 'reason': 'non-USSD payment'})
-        
         status = str(body.get('status', '')).lower()
 
         if status in ('success', 'successful', 'completed', 'true', '1', 'approved'):
@@ -719,9 +712,23 @@ class NaloPaymentCallbackView(View):
             logger.warning(f'Nalo callback: payment status update failed: {e}')
 
         from apps.voting.models import Vote
+
+        # ── RACE CONDITION FIX ────────────────────────────────────────────
+        # Nalo sometimes fires the callback twice within milliseconds.
+        # Without a mutex, both calls read Vote.exists()=False simultaneously,
+        # both proceed to cast_vote(qty=N), and you get 2×N votes.
+        # We use a cache lock: first caller sets it and proceeds,
+        # second caller finds it set and exits immediately.
+        lock_key = f'nalo_cast_lock:{reference}'
+        lock_acquired = cache.add(lock_key, '1', timeout=60)  # atomic set-if-not-exists
+        if not lock_acquired:
+            logger.warning(f'Nalo callback: duplicate callback blocked by lock for ref={reference}')
+            return JsonResponse({'status': 'ok', 'message': 'duplicate blocked'})
+
         if Vote.objects.filter(payment_ref=reference).exists():
             logger.info(f'Nalo callback: vote already cast for ref={reference}')
             cache.delete(f'ussd_payment:{reference}')
+            cache.delete(lock_key)
             return JsonResponse({'status': 'ok', 'message': 'already cast'})
 
         try:
@@ -762,6 +769,11 @@ class NaloPaymentCallbackView(View):
 
         except Exception as e:
             logger.error(f'Nalo callback: exception casting vote for ref={reference}: {e}')
+        finally:
+            # Always release the lock so future legitimate retries can proceed
+            # (e.g. if cast_vote failed due to a transient error)
+            if not Vote.objects.filter(payment_ref=reference).exists():
+                cache.delete(lock_key)
 
         return JsonResponse({'status': 'ok'})
 
