@@ -667,6 +667,13 @@ class NaloPaymentCallbackView(View):
         logger.info(f'Nalo callback received: {body}')
 
         reference = body.get('reference') or body.get('ref') or body.get('externalRef') or body.get('order_id', '')
+        
+        # ── FIX: ONLY PROCESS USSD REFERENCES ─────────────────────────────────
+        # This callback should only handle USSD payment confirmations
+        if reference and not reference.startswith('USSD-'):
+            logger.info(f'Nalo callback: skipping non-USSD reference {reference} (handled by Paystack webhook)')
+            return JsonResponse({'status': 'skipped', 'reason': 'non-USSD payment'})
+        
         status = str(body.get('status', '')).lower()
 
         if status in ('success', 'successful', 'completed', 'true', '1', 'approved'):

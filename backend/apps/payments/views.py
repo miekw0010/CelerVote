@@ -123,8 +123,8 @@ class VerifyPaymentView(APIView):
                 'message':      f'Payment successful! You can now cast {payment.votes_bought} vote(s).',
             })
         else:
-    # Don't mark as FAILED - Paystack may just not have settled yet
-    # The webhook will mark SUCCESS when it arrives
+            # Don't mark as FAILED - Paystack may just not have settled yet
+            # The webhook will mark SUCCESS when it arrives
             return Response({'status': 'pending', 'message': 'Payment not yet confirmed. Please wait.'}, status=200)
 
 
@@ -183,6 +183,12 @@ class PaystackWebhookView(APIView):
             reference = data.get('reference', '')
             import logging as _wh_log
             _log = _wh_log.getLogger(__name__)
+
+            # ── FIX: SKIP USSD PAYMENTS ─────────────────────────────────────
+            # USSD payments are handled by NaloPaymentCallbackView, not Paystack webhook
+            if reference and reference.startswith('USSD-'):
+                _log.info(f'Paystack webhook: skipping USSD payment {reference} (handled by NALOPAY)')
+                return Response({'status': 'skipped', 'reason': 'USSD payment'})
 
             # ── 1. Mark Payment record as SUCCESS ────────────────────────────
             payment_obj = None

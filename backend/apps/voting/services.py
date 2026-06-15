@@ -126,12 +126,28 @@ class VoteCaster:
         if len(candidates) != len(candidate_ids):
             return {'success': False, 'error': 'One or more invalid candidates.'}
 
-       # Verify payment BEFORE creating session
+        # ── IDEMPOTENCY CHECK: Prevent double casting ─────────────────────────
+        if payment_ref:
+            existing_votes = Vote.objects.filter(payment_ref=payment_ref).count()
+            if existing_votes > 0:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f'cast_vote called again for ref={payment_ref}, {existing_votes} votes already exist'
+                )
+                # Return success since votes already exist
+                return {
+                    'success': True,
+                    'vote_ids': [],
+                    'message': 'Votes already cast',
+                    'already_cast': True
+                }
+
+        # Verify payment BEFORE creating session
         if self.event.is_paid:
             if not payment_ref:
                 return {'success': False, 'error': 'Payment reference required for this event.'}
 
-            # Block reuse of the same reference
+            # Block reuse of the same reference (second layer of protection)
             if Vote.objects.filter(payment_ref=payment_ref).exists():
                 return {'success': False, 'error': 'This payment has already been used to cast a vote.'}
 
