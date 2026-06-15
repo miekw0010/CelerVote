@@ -51,4 +51,4 @@ class FraudFlagSerializer(serializers.ModelSerializer):
     class Meta:
         model  = FraudFlag
         fields = ['id', 'fraud_type', 'description', 'ip_address', 'resolution', 'resolved_by', 'created_at']
-        read_only_fields = fields
+        read_only_fields = fields 

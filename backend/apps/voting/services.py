@@ -282,7 +282,7 @@ class VoteCaster:
         All-or-nothing: if any item fails validation, the entire batch is rejected.
         """
         if not self.event.is_open:
-            return {'success': False, 'error': 'Voting is not currently open for this event.'}
+            return {'success': False, 'error': 'Voting is not currently open for this event..'}
 
         if self.event.is_paid:
             return {'success': False, 'error': 'Bulk voting is only for free/organisational elections.'}
