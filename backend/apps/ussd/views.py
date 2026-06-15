@@ -47,7 +47,7 @@ def end(uid, msisdn, msg):
 
 
 def _get_nalo_token():
-    """Get a short-lived Nalo API token, cached for 50 minutes."""
+    """Get a short-lived Nalo API token, cached for 10 minutes."""
     cached = cache.get('nalo_api_token')
     if cached:
         logger.info('Using cached Nalo token')
@@ -91,8 +91,9 @@ def _get_nalo_token():
             token = data['token']
         
         if token:
-            cache.set('nalo_api_token', token, timeout=3000)
-            logger.info(f'Nalo token obtained and cached: {token[:50]}...')
+            # Cache for 10 minutes (shorter to avoid expired tokens)
+            cache.set('nalo_api_token', token, timeout=600)
+            logger.info('Nalo token obtained and cached for 10 minutes')
             return token
         
         logger.error(f'Nalo: could not extract token from response: {data}')
@@ -138,91 +139,101 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
     Trigger a MoMo collection prompt on the user's phone via Nalo.
     Returns True if the request was accepted (payment is pending).
     """
-    token = _get_nalo_token()
-    if not token:
-        logger.error('Nalo: could not get API token')
-        return False
-    
-    try:
-        # Format phone number - remove + and spaces
-        clean_phone = msisdn.replace('+', '').replace(' ', '')
+    # Try up to 2 times (in case token expired)
+    for attempt in range(2):
+        token = _get_nalo_token()
+        if not token:
+            logger.error('Nalo: could not get API token')
+            return False
         
-        # Use LOCAL format (0XXXXXXXXX) for NALOPAY (matching their example)
-        if clean_phone.startswith('233'):
-            account_number = '0' + clean_phone[3:]  # 233592377833 → 0592377833
-        elif clean_phone.startswith('0'):
-            account_number = clean_phone
-        else:
-            account_number = clean_phone
-        
-        # Map network names to NALOPAY expected values: MTN, AT (AirtelTigo), or TELECEL (Vodafone)
-        network_map = {
-            'MTN': 'MTN',
-            'VODAFONE': 'TELECEL',
-            'VODA': 'TELECEL',
-            'AIRTELTIGO': 'AT',
-            'TIGO': 'AT',
-            'AIRTEL': 'AT',
-        }
-        
-        network_value = network_map.get(network.upper(), 'MTN')
-        
-        # Amount as decimal with 2 decimal places
-        amount_decimal = round(float(amount), 2)
-        
-        # Generate trans_hash using formatted amount (with 2 decimals)
-        merchant_id = getattr(settings, 'NALOPAY_MERCHANT_ID', '')
-        trans_hash = _generate_trans_hash(merchant_id, account_number, amount_decimal, reference)
-        
-        payload = {
-            'merchant_id': merchant_id,
-            'service_name': 'MOMO_TRANSACTION',
-            'trans_hash': trans_hash,
-            'account_number': account_number,
-            'account_name': account_name,
-            'network': network_value,
-            'amount': amount_decimal,
-            'reference': reference,
-            'callback': getattr(settings, 'BACKEND_URL', 'https://celervote.up.railway.app').rstrip('/') + '/api/v1/ussd/payment-callback/',
-            'description': description,
-            'extra_data': {
-                'source': 'ussd',
-                'vote_reference': reference,
-                'platform': 'celervote'
-            }
-        }
-        
-        headers = {
-            'Content-Type': 'application/json',
-            'token': token
-        }
-        
-        logger.info(f'Nalo collection payload: {payload}')
-        
-        resp = _requests.post(
-            NALO_COLLECT_URL,
-            json=payload,
-            headers=headers,
-            timeout=15,
-        )
-        
-        logger.info(f'Nalo collection response: {resp.status_code} - {resp.text[:500]}')
-        
-        if resp.status_code in (200, 201, 202):
-            data = resp.json()
-            if data.get('success'):
-                logger.info(f'Nalo payment initiated: {reference}')
-                return True
+        try:
+            # Format phone number - remove + and spaces
+            clean_phone = msisdn.replace('+', '').replace(' ', '')
+            
+            # Use LOCAL format (0XXXXXXXXX) for NALOPAY (matching their example)
+            if clean_phone.startswith('233'):
+                account_number = '0' + clean_phone[3:]  # 233592377833 → 0592377833
+            elif clean_phone.startswith('0'):
+                account_number = clean_phone
             else:
-                logger.warning(f'Nalo collection failed: {data.get("code")} - {data.get("error")}')
-                return False
-        
-        logger.warning(f'Nalo collection HTTP error: {resp.status_code}')
-        return False
-        
-    except Exception as e:
-        logger.error(f'Nalo collection error: {e}')
-        return False
+                account_number = clean_phone
+            
+            # Map network names to NALOPAY expected values: MTN, AT (AirtelTigo), or TELECEL (Vodafone)
+            network_map = {
+                'MTN': 'MTN',
+                'VODAFONE': 'TELECEL',
+                'VODA': 'TELECEL',
+                'AIRTELTIGO': 'AT',
+                'TIGO': 'AT',
+                'AIRTEL': 'AT',
+            }
+            
+            network_value = network_map.get(network.upper(), 'MTN')
+            
+            # Amount as decimal with 2 decimal places
+            amount_decimal = round(float(amount), 2)
+            
+            # Generate trans_hash using formatted amount (with 2 decimals)
+            merchant_id = getattr(settings, 'NALOPAY_MERCHANT_ID', '')
+            trans_hash = _generate_trans_hash(merchant_id, account_number, amount_decimal, reference)
+            
+            payload = {
+                'merchant_id': merchant_id,
+                'service_name': 'MOMO_TRANSACTION',
+                'trans_hash': trans_hash,
+                'account_number': account_number,
+                'account_name': account_name,
+                'network': network_value,
+                'amount': amount_decimal,
+                'reference': reference,
+                'callback': getattr(settings, 'BACKEND_URL', 'https://celervote.up.railway.app').rstrip('/') + '/api/v1/ussd/payment-callback/',
+                'description': description,
+                'extra_data': {
+                    'source': 'ussd',
+                    'vote_reference': reference,
+                    'platform': 'celervote'
+                }
+            }
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'token': token
+            }
+            
+            logger.info(f'Nalo collection payload: {payload}')
+            
+            resp = _requests.post(
+                NALO_COLLECT_URL,
+                json=payload,
+                headers=headers,
+                timeout=15,
+            )
+            
+            logger.info(f'Nalo collection response: {resp.status_code} - {resp.text[:500]}')
+            
+            if resp.status_code in (200, 201, 202):
+                data = resp.json()
+                if data.get('success'):
+                    logger.info(f'Nalo payment initiated: {reference}')
+                    return True
+                else:
+                    error_msg = data.get('error', {}).get('description', data.get('code', ''))
+                    if 'expired' in str(error_msg).lower() or 'token' in str(error_msg).lower():
+                        # Token expired, clear cache and retry
+                        logger.warning(f'Token expired, clearing cache and retrying... (attempt {attempt + 1})')
+                        cache.delete('nalo_api_token')
+                        continue  # Retry with new token
+                    logger.warning(f'Nalo collection failed: {data.get("code")} - {error_msg}')
+                    return False
+            
+            logger.warning(f'Nalo collection HTTP error: {resp.status_code}')
+            return False
+            
+        except Exception as e:
+            logger.error(f'Nalo collection error: {e}')
+            return False
+    
+    return False
 
 
 def _send_sms_confirmation(msisdn, cand_name, qty, reference):
