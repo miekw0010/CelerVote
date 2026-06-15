@@ -39,11 +39,18 @@ def cs(sid):       cache.delete(f'nalo:{sid}')
 
 
 def cont(uid, msisdn, msg):
+    """Continue USSD session - user can reply"""
     return JsonResponse({"USERID": uid, "MSISDN": msisdn, "MSG": msg, "MSGTYPE": True})
 
 
 def end(uid, msisdn, msg):
-    return JsonResponse({"USERID": uid, "MSISDN": msisdn, "MSG": msg, "MSGTYPE": False})
+    """End USSD session - no further input allowed"""
+    return JsonResponse({
+        "USERID": uid,
+        "MSISDN": msisdn,
+        "MSG": msg,
+        "MSGTYPE": False
+    })
 
 
 def _get_nalo_token():
@@ -108,7 +115,7 @@ def _generate_trans_hash(merchant_id, account_number, amount, reference):
         logger.error('NALO_CLIENT_SECRET missing for trans_hash generation')
         return ''
     
-    # Format amount with EXACTLY TWO decimal places (matching documentation)
+    # Format amount with EXACTLY TWO decimal places
     amount_str = f"{float(amount):.2f}"
     
     # Concatenate fields in the required order (NO separators)
@@ -142,7 +149,7 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
         # Format phone number - remove + and spaces
         clean_phone = msisdn.replace('+', '').replace(' ', '')
         
-        # Use LOCAL format (0XXXXXXXXX) for NALOPAY (matching their example)
+        # Use LOCAL format (0XXXXXXXXX) for NALOPAY
         if clean_phone.startswith('233'):
             account_number = '0' + clean_phone[3:]  # 233592377833 → 0592377833
         elif clean_phone.startswith('0'):
@@ -150,7 +157,7 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
         else:
             account_number = clean_phone
         
-        # Map network names to NALOPAY expected values: MTN, AT (AirtelTigo), or TELECEL (Vodafone)
+        # Map network names to NALOPAY expected values
         network_map = {
             'MTN': 'MTN',
             'VODAFONE': 'TELECEL',
@@ -603,6 +610,7 @@ class USSDView(View):
         cs(session_id)
 
         if ok:
+            # Session ends immediately - user cannot reply
             return end(uid, msisdn,
                 f"✓ Payment initiated!\n"
                 f"Amount: GHS {total:.2f}\n"
