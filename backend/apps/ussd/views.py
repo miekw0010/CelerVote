@@ -114,14 +114,22 @@ def _trigger_momo_payment(msisdn, amount, reference, description):
         return False
     
     try:
+        # Format phone number - remove + and spaces
         clean_phone = msisdn.replace('+', '').replace(' ', '')
         
+        # Convert to local format (0XXXXXXXXX) for NALOPAY
+        if clean_phone.startswith('233'):
+            local_phone = '0' + clean_phone[3:]  # 233592377833 → 0592377833
+        else:
+            local_phone = clean_phone
+        
         payload = {
-            'msisdn': clean_phone,
+            'merchant_id': getattr(settings, 'NALOPAY_MERCHANT_ID', ''),  # Added merchant_id
+            'account_number': local_phone,  # Changed from 'msisdn' to 'account_number' with local format
             'amount': str(amount),
             'reference': reference,
             'description': description,
-            'service_name': 'MOMO_TRANSACTION',  # ← FIXED: Added correct service name
+            'service_name': 'MOMO_TRANSACTION',
             'callback_url': f"{getattr(settings, 'BACKEND_URL', 'https://celervote.up.railway.app').rstrip('/')}/api/v1/ussd/payment-callback/",
         }
         
@@ -145,12 +153,7 @@ def _trigger_momo_payment(msisdn, amount, reference, description):
         
         if resp.status_code in (200, 201, 202):
             data = resp.json()
-            is_success = (
-                data.get('status') in (True, 'true', 'success', 'True', 200) or
-                data.get('success') in (True, 'true', 'success', 'True') or
-                resp.status_code in (200, 201, 202)
-            )
-            if is_success:
+            if data.get('success'):
                 logger.info(f'Nalo payment initiated: {reference}')
                 return True
         
