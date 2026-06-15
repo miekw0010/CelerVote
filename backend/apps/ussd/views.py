@@ -12,6 +12,8 @@ Response fields:   USERID, MSISDN, MSG, MSGTYPE (true=continue, false=end)
 import json
 import logging
 import uuid
+import hmac
+import hashlib
 
 import requests as _requests
 from django.conf import settings
@@ -103,7 +105,34 @@ def _get_nalo_token():
         return None
 
 
-def _trigger_momo_payment(msisdn, amount, reference, description):
+def _generate_trans_hash(merchant_id, account_number, amount, reference):
+    """
+    Generate HMAC SHA256 hash for NALOPAY verification.
+    Order of fields: merchant_id, account_number, amount, reference
+    """
+    client_secret = getattr(settings, 'NALO_CLIENT_SECRET', '')
+    if not client_secret:
+        logger.error('NALO_CLIENT_SECRET missing for trans_hash generation')
+        return ''
+    
+    # Format amount as string without decimal issues
+    amount_str = str(amount)
+    
+    # Concatenate fields in the required order
+    message = f"{merchant_id}{account_number}{amount_str}{reference}"
+    
+    # Generate HMAC SHA256
+    trans_hash = hmac.new(
+        client_secret.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    logger.debug(f'Generated trans_hash for {reference}: {trans_hash[:16]}...')
+    return trans_hash
+
+
+def _trigger_momo_payment(msisdn, amount, reference, description, account_name, network="MTN"):
     """
     Trigger a MoMo collection prompt on the user's phone via Nalo.
     Returns True if the request was accepted (payment is pending).
@@ -123,14 +152,38 @@ def _trigger_momo_payment(msisdn, amount, reference, description):
         else:
             local_phone = clean_phone
         
+        # Map network names to NALOPAY expected values: MTN, AT (AirtelTigo), or TELECEL (Vodafone)
+        network_map = {
+            'MTN': 'MTN',
+            'VODAFONE': 'TELECEL',
+            'VODA': 'TELECEL',
+            'AIRTELTIGO': 'AT',
+            'TIGO': 'AT',
+            'AIRTEL': 'AT',
+        }
+        
+        network_value = network_map.get(network.upper(), 'MTN')
+        
+        # Generate trans_hash
+        merchant_id = getattr(settings, 'NALOPAY_MERCHANT_ID', '')
+        trans_hash = _generate_trans_hash(merchant_id, local_phone, amount, reference)
+        
         payload = {
-            'merchant_id': getattr(settings, 'NALOPAY_MERCHANT_ID', ''),  # Added merchant_id
-            'account_number': local_phone,  # Changed from 'msisdn' to 'account_number' with local format
+            'merchant_id': merchant_id,
+            'service_name': 'MOMO_TRANSACTION',
+            'trans_hash': trans_hash,  # REQUIRED: HMAC SHA256 hash
+            'account_number': local_phone,
+            'account_name': account_name,  # REQUIRED: Customer's name
+            'network': network_value,
             'amount': str(amount),
             'reference': reference,
+            'callback': f"{getattr(settings, 'BACKEND_URL', 'https://celervote.up.railway.app').rstrip('/')}/api/v1/ussd/payment-callback/",
             'description': description,
-            'service_name': 'MOMO_TRANSACTION',
-            'callback_url': f"{getattr(settings, 'BACKEND_URL', 'https://celervote.up.railway.app').rstrip('/')}/api/v1/ussd/payment-callback/",
+            'extra_data': {
+                'source': 'ussd',
+                'vote_reference': reference,
+                'platform': 'celervote'
+            }
         }
         
         headers = {'Content-Type': 'application/json'}
@@ -211,7 +264,7 @@ class USSDView(View):
         msisdn     = body.get('MSISDN', '')
         userdata   = body.get('USERDATA', '').strip()
         session_id = body.get('SESSIONID', '')
-        network    = body.get('NETWORK', '')
+        network    = body.get('NETWORK', 'MTN')
 
         logger.info(f'NALO | sid={session_id} | msisdn={msisdn} | data={userdata!r} | net={network}')
 
@@ -219,7 +272,7 @@ class USSDView(View):
 
         if not userdata or not state:
             cs(session_id)
-            ss(session_id, {'level': 'home'})
+            ss(session_id, {'level': 'home', 'network': network})
             return cont(uid, msisdn,
                 "Welcome to CelerVote\n"
                 "1. Browse & Vote\n"
@@ -232,31 +285,31 @@ class USSDView(View):
             if userdata == '1':
                 return self._show_events(uid, msisdn, session_id, state)
             elif userdata == '2':
-                ss(session_id, {'level': 'quick_code'})
+                ss(session_id, {'level': 'quick_code', 'network': network})
                 return cont(uid, msisdn, "Enter the 6-character\ncandidate code:")
             return end(uid, msisdn, "Invalid choice. Dial again.")
 
         if level == 'quick_code':
-            return self._handle_quick_code(uid, msisdn, session_id, state, userdata)
+            return self._handle_quick_code(uid, msisdn, session_id, state, userdata, network)
         if level == 'quick_qty':
-            return self._handle_quick_qty(uid, msisdn, session_id, state, userdata)
+            return self._handle_quick_qty(uid, msisdn, session_id, state, userdata, network)
         if level == 'quick_confirm':
-            return self._handle_quick_confirm(uid, msisdn, session_id, state, userdata, msisdn)
+            return self._handle_quick_confirm(uid, msisdn, session_id, state, userdata, msisdn, network)
 
         if level == 'events':
-            return self._handle_event_choice(uid, msisdn, session_id, state, userdata)
+            return self._handle_event_choice(uid, msisdn, session_id, state, userdata, network)
         if level == 'categories':
-            return self._handle_category_choice(uid, msisdn, session_id, state, userdata)
+            return self._handle_category_choice(uid, msisdn, session_id, state, userdata, network)
         if level == 'candidates':
-            return self._handle_candidate_choice(uid, msisdn, session_id, state, userdata)
+            return self._handle_candidate_choice(uid, msisdn, session_id, state, userdata, network)
         if level == 'browse_qty':
-            return self._handle_browse_qty(uid, msisdn, session_id, state, userdata)
+            return self._handle_browse_qty(uid, msisdn, session_id, state, userdata, network)
         if level == 'confirm':
-            return self._handle_confirmation(uid, msisdn, session_id, state, userdata, msisdn)
+            return self._handle_confirmation(uid, msisdn, session_id, state, userdata, msisdn, network)
 
         return end(uid, msisdn, "Session expired. Dial again.")
 
-    def _handle_quick_code(self, uid, msisdn, session_id, state, userdata):
+    def _handle_quick_code(self, uid, msisdn, session_id, state, userdata, network):
         code = userdata.upper().strip()
         if len(code) != 6:
             return end(uid, msisdn, "Invalid code length.\nCodes are 6 characters.\nDial again.")
@@ -287,6 +340,7 @@ class USSDView(View):
             'cat_name':   category.name,
             'is_paid':    event.is_paid,
             'price':      str(event.price_per_vote) if event.is_paid else '0',
+            'network':    network,
         })
 
         if event.is_paid:
@@ -310,16 +364,16 @@ class USSDView(View):
                 f"2. Cancel"
             )
 
-    def _handle_quick_qty(self, uid, msisdn, session_id, state, userdata):
-        return self._handle_qty_input(uid, msisdn, session_id, state, userdata, next_level='quick_confirm')
+    def _handle_quick_qty(self, uid, msisdn, session_id, state, userdata, network):
+        return self._handle_qty_input(uid, msisdn, session_id, state, userdata, network, next_level='quick_confirm')
 
-    def _handle_quick_confirm(self, uid, msisdn, session_id, state, userdata, phone):
+    def _handle_quick_confirm(self, uid, msisdn, session_id, state, userdata, phone, network):
         if userdata == '2':
             cs(session_id)
             return end(uid, msisdn, "Vote cancelled.\nThank you.")
         if userdata != '1':
             return end(uid, msisdn, "Invalid input. Dial again.")
-        return self._cast_or_pay(uid, msisdn, session_id, state, phone)
+        return self._cast_or_pay(uid, msisdn, session_id, state, phone, network)
 
     def _show_events(self, uid, msisdn, session_id, state):
         from apps.events.models import Event
@@ -338,7 +392,7 @@ class USSDView(View):
         ss(session_id, state)
         return cont(uid, msisdn, msg.strip())
 
-    def _handle_event_choice(self, uid, msisdn, session_id, state, userdata):
+    def _handle_event_choice(self, uid, msisdn, session_id, state, userdata, network):
         emap = state.get('emap', {})
         if userdata not in emap:
             return end(uid, msisdn, "Invalid choice. Dial again.")
@@ -366,11 +420,12 @@ class USSDView(View):
             'is_paid':    event.is_paid,
             'price':      str(event.price_per_vote) if event.is_paid else '0',
             'cmap':       cmap,
+            'network':    network,
         })
         ss(session_id, state)
         return cont(uid, msisdn, msg.strip())
 
-    def _handle_category_choice(self, uid, msisdn, session_id, state, userdata):
+    def _handle_category_choice(self, uid, msisdn, session_id, state, userdata, network):
         cmap = state.get('cmap', {})
         if userdata not in cmap:
             return end(uid, msisdn, "Invalid choice. Dial again.")
@@ -397,11 +452,12 @@ class USSDView(View):
             'cat_id':   str(cat.id),
             'cat_name': cat.name,
             'candmap':  candmap,
+            'network':  network,
         })
         ss(session_id, state)
         return cont(uid, msisdn, msg.strip())
 
-    def _handle_candidate_choice(self, uid, msisdn, session_id, state, userdata):
+    def _handle_candidate_choice(self, uid, msisdn, session_id, state, userdata, network):
         candmap = state.get('candmap', {})
         if userdata not in candmap:
             return end(uid, msisdn, "Invalid choice. Dial again.")
@@ -416,6 +472,7 @@ class USSDView(View):
             'cand_id':   str(cand.id),
             'cand_name': cand.name,
             'cand_code': cand.code or '',
+            'network':   network,
         })
 
         if state.get('is_paid'):
@@ -436,18 +493,18 @@ class USSDView(View):
                 f"1. Confirm\n2. Cancel"
             )
 
-    def _handle_browse_qty(self, uid, msisdn, session_id, state, userdata):
-        return self._handle_qty_input(uid, msisdn, session_id, state, userdata, next_level='confirm')
+    def _handle_browse_qty(self, uid, msisdn, session_id, state, userdata, network):
+        return self._handle_qty_input(uid, msisdn, session_id, state, userdata, network, next_level='confirm')
 
-    def _handle_confirmation(self, uid, msisdn, session_id, state, userdata, phone):
+    def _handle_confirmation(self, uid, msisdn, session_id, state, userdata, phone, network):
         if userdata == '2':
             cs(session_id)
             return end(uid, msisdn, "Vote cancelled.\nThank you.")
         if userdata != '1':
             return end(uid, msisdn, "Invalid input. Dial again.")
-        return self._cast_or_pay(uid, msisdn, session_id, state, phone)
+        return self._cast_or_pay(uid, msisdn, session_id, state, phone, network)
 
-    def _handle_qty_input(self, uid, msisdn, session_id, state, userdata, next_level):
+    def _handle_qty_input(self, uid, msisdn, session_id, state, userdata, network, next_level):
         try:
             qty = int(userdata.strip())
             if qty < 1 or qty > 100:
@@ -463,6 +520,7 @@ class USSDView(View):
             'level':    next_level,
             'quantity': qty,
             'total':    total,
+            'network':  network,
         })
         ss(session_id, state)
 
@@ -475,15 +533,30 @@ class USSDView(View):
             f"2. Cancel"
         )
 
-    def _cast_or_pay(self, uid, msisdn, session_id, state, phone):
+    def _cast_or_pay(self, uid, msisdn, session_id, state, phone, network):
         if state.get('is_paid'):
-            return self._initiate_payment(uid, msisdn, session_id, state, phone)
+            return self._initiate_payment(uid, msisdn, session_id, state, phone, network)
         return self._cast_vote(uid, msisdn, session_id, state, phone)
 
-    def _initiate_payment(self, uid, msisdn, session_id, state, phone):
+    def _initiate_payment(self, uid, msisdn, session_id, state, phone, network):
         qty   = state.get('quantity', 1)
         total = state.get('total', 0)
         ref   = f'USSD-{uuid.uuid4().hex[:12].upper()}'
+        cand_name = state.get('cand_name', 'Voter')
+
+        # Get or create user to get account name
+        from apps.accounts.models import User
+        clean = phone.strip().replace(' ', '').replace('+', '')
+        user, _ = User.objects.get_or_create(
+            phone=clean,
+            defaults={
+                'email': f'{clean}@ussd.evoting.local',
+                'name': cand_name,
+                'is_verified': True,
+            }
+        )
+        
+        account_name = user.name or cand_name or 'CelerVote User'
 
         pending = {
             'reference':  ref,
@@ -491,26 +564,17 @@ class USSDView(View):
             'event_id':   state.get('event_id'),
             'cat_id':     state.get('cat_id'),
             'cand_id':    state.get('cand_id'),
-            'cand_name':  state.get('cand_name'),
+            'cand_name':  cand_name,
             'quantity':   qty,
             'total':      total,
+            'network':    network,
         }
         cache.set(f'ussd_payment:{ref}', pending, timeout=PAYMENT_TTL)
 
         try:
             from apps.events.models import Event, Category, Candidate
             from apps.payments.models import Payment
-            from apps.accounts.models import User
 
-            clean = phone.strip().replace(' ', '').replace('+', '')
-            user, _ = User.objects.get_or_create(
-                phone=clean,
-                defaults={
-                    'email':       f'{clean}@ussd.evoting.local',
-                    'name':        clean,
-                    'is_verified': True,
-                }
-            )
             event = Event.objects.get(id=state['event_id'])
             Payment.objects.create(
                 user=user,
@@ -527,12 +591,13 @@ class USSDView(View):
         except Exception as e:
             logger.warning(f'USSD payment DB record failed: {e}')
 
-        cand_name = state.get('cand_name', 'Candidate')
         ok = _trigger_momo_payment(
             msisdn=phone,
             amount=total,
             reference=ref,
             description=f'CelerVote: {qty} vote(s) for {cand_name}',
+            account_name=account_name,
+            network=network,
         )
 
         cs(session_id)
@@ -639,6 +704,7 @@ class NaloPaymentCallbackView(View):
                     'quantity':  pay_obj.votes_bought or 1,
                     'msisdn':    pay_obj.phone or '',
                     'cand_name': '',
+                    'network':   'MTN',
                 }
             except Exception as e:
                 logger.error(f'Nalo callback: no pending payment found for ref={reference}: {e}')
