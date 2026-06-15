@@ -191,6 +191,11 @@ NALO_CLIENT_ID     = config('NALO_CLIENT_ID', default='')
 NALO_CLIENT_SECRET = config('NALO_CLIENT_SECRET', default='')
 BACKEND_URL        = config('BACKEND_URL', default='https://celervote.up.railway.app')
 PAYSTACK_PUBLIC_KEY = config('PAYSTACK_PUBLIC_KEY', default='')
+# Add these to your settings.py
+NALO_CLIENT_ID = config('NALO_CLIENT_ID', default='')
+NALO_CLIENT_SECRET = config('NALO_CLIENT_SECRET', default='')
+NALOPAY_MERCHANT_ID = config('NALOPAY_MERCHANT_ID', default='')
+BACKEND_URL = config('BACKEND_URL', default='https://celervote.up.railway.app')
 PAYSTACK_BASE_URL = config('PAYSTACK_BASE_URL', default='https://api.paystack.co')
 
 CLOUDINARY_STORAGE = {
