@@ -425,41 +425,83 @@ const EventDetailPage = () => {
   };
 
   const handlePaymentSuccess = async (reference: string, catId: string) => {
-    lockCat(catId); setPaymentStep(p => ({ ...p, [catId]: 'verifying' }));
-    const qty = getQty(catId);
-    const MAX = 6;
-
-    // Cast the vote directly — the backend verifies the payment internally.
-    // No separate pre-verify step needed (avoids localhost URL fallback issue).
-    const attempt = async (n: number): Promise<void> => {
-      try {
-        await castVote({ event_slug: slug!, category_id: catId, candidate_ids: [selectedCandidates[catId]], payment_ref: reference, quantity: qty });
-        setVotedCategories(p => [...p, catId]); setPaymentStep(p => ({ ...p, [catId]: 'done' })); fireConfetti(); refetch();
-        toast({ title: 'Votes cast! 🎉', description: `${qty} vote(s) recorded.` });
-        setTimeout(() => { setPaymentStep(p => ({ ...p, [catId]: 'select' })); setSelectedCandidates(p => ({ ...p, [catId]: '' })); setVoteQuantity(p => ({ ...p, [catId]: 1 })); unlockCat(catId); }, 1500);
-      } catch (e: any) {
-        const msg = e?.message || '';
-        if (msg.includes('already been used') || msg.includes('already cast') || msg.includes('already voted')) {
-          setVotedCategories(p => [...p, catId]); setPaymentStep(p => ({ ...p, [catId]: 'done' })); fireConfetti(); refetch();
-          toast({ title: 'Votes cast! 🎉' });
-          setTimeout(() => { setPaymentStep(p => ({ ...p, [catId]: 'select' })); setSelectedCandidates(p => ({ ...p, [catId]: '' })); setVoteQuantity(p => ({ ...p, [catId]: 1 })); unlockCat(catId); }, 1500);
-          return;
-        }
-        if (n < MAX) {
-          await new Promise(r => setTimeout(r, Math.min(n * 1500, 5000)));
-          return attempt(n + 1);
-        }
-        // All retries exhausted — unblock UI, webhook will cast as safety net
-        const failed = JSON.parse(localStorage.getItem('failed_votes') || '[]');
-        failed.push({ reference, event_slug: slug, category_id: catId, candidate_id: selectedCandidates[catId], quantity: qty, timestamp: new Date().toISOString(), reason: msg });
-        localStorage.setItem('failed_votes', JSON.stringify(failed));
-        setPaymentStep(p => ({ ...p, [catId]: 'select' })); unlockCat(catId);
-        toast({ title: 'Payment received — vote pending', description: `Ref: ${reference}. Your vote will be recorded shortly.`, variant: 'destructive', duration: 30000 });
+  lockCat(catId);
+  setPaymentStep(p => ({ ...p, [catId]: 'verifying' }));
+  const qty = getQty(catId);
+  const MAX = 20; // Increase max attempts
+  let isCompleted = false; // Flag to stop retries
+  
+  const attempt = async (n: number): Promise<void> => {
+    // Don't retry if already completed
+    if (isCompleted) return;
+    
+    try {
+      await castVote({ 
+        event_slug: slug!, 
+        category_id: catId, 
+        candidate_ids: [selectedCandidates[catId]], 
+        payment_ref: reference, 
+        quantity: qty 
+      });
+      
+      // Success!
+      isCompleted = true;
+      setVotedCategories(p => [...p, catId]);
+      setPaymentStep(p => ({ ...p, [catId]: 'done' }));
+      fireConfetti();
+      refetch();
+      toast({ title: "Votes cast! 🎉" });
+      
+      setTimeout(() => { 
+        setPaymentStep(p => ({ ...p, [catId]: 'select' })); 
+        setSelectedCandidates(p => ({ ...p, [catId]: '' })); 
+        setVoteQuantity(p => ({ ...p, [catId]: 1 })); 
+        unlockCat(catId);
+        selectCategory(null);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 1500);
+      
+    } catch (e: any) {
+      const msg = e?.message || '';
+      
+      // Payment already used - means vote was cast (probably by webhook)
+      if (msg.includes('already been used')) {
+        isCompleted = true;
+        setVotedCategories(p => [...p, catId]);
+        setPaymentStep(p => ({ ...p, [catId]: 'done' }));
+        fireConfetti();
+        refetch();
+        toast({ title: "Vote confirmed! 🎉", description: "Your vote has been recorded." });
+        setTimeout(() => { 
+          setPaymentStep(p => ({ ...p, [catId]: 'select' })); 
+          setSelectedCandidates(p => ({ ...p, [catId]: '' })); 
+          setVoteQuantity(p => ({ ...p, [catId]: 1 })); 
+          unlockCat(catId);
+          selectCategory(null);
+        }, 1500);
+        return;
       }
-    };
-    await attempt(1);
+      
+      // Retry logic
+      if (n < MAX && !isCompleted) {
+        toast({ 
+          title: `Confirming your vote (${n}/${MAX})`, 
+          description: "Your payment was received — we're recording your vote.",
+          duration: 2000
+        });
+        await new Promise(r => setTimeout(r, n * 2000));
+        return attempt(n + 1);
+      }
+      
+      // Only show manual retry if not completed
+      if (!isCompleted) {
+        // ... manual retry dialog
+      }
+    }
   };
-
+  
+  await attempt(1);
+};
   const handleShare = () => { navigator.clipboard.writeText(window.location.href); toast({ title: "Link copied! 🔗" }); };
   const getTimeLeft = (t: string) => {
     if (!t) return null;
