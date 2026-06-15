@@ -50,6 +50,7 @@ def _get_nalo_token():
     """Get a short-lived Nalo API token, cached for 50 minutes."""
     cached = cache.get('nalo_api_token')
     if cached:
+        logger.info('Using cached Nalo token')
         return cached
     
     auth_key = getattr(settings, 'NALO_CLIENT_ID', '')
@@ -62,7 +63,7 @@ def _get_nalo_token():
         return None
     
     try:
-        payload = {'merchant_id': merchant_id} if merchant_id else {}
+        payload = {'merchant_id': merchant_id}
         
         resp = _requests.post(
             NALO_TOKEN_URL,
@@ -73,32 +74,33 @@ def _get_nalo_token():
             json=payload,
             timeout=10,
         )
-        logger.info(f'Nalo token response: {resp.status_code}')
+        logger.info(f'Nalo token response status: {resp.status_code}')
         
         if resp.status_code != 200:
-            logger.warning(f'Nalo token HTTP error: {resp.status_code}')
-            return auth_key
+            logger.warning(f'Nalo token HTTP error: {resp.status_code} - {resp.text[:200]}')
+            return None
         
         data = resp.json()
+        logger.info(f'Nalo token response body: {data}')
         
-        token = (
-            data.get('token') or
-            data.get('access_token') or
-            data.get('data', {}).get('token') or
-            data.get('data', {}).get('access_token')
-        )
+        # Extract token from response (handle different response formats)
+        token = None
+        if data.get('success') and data.get('data', {}).get('token'):
+            token = data['data']['token']
+        elif data.get('token'):
+            token = data['token']
+        elif data.get('access_token'):
+            token = data['access_token']
+        elif data.get('data', {}).get('access_token'):
+            token = data['data']['access_token']
         
         if token:
-            cache.set('nalo_api_token', token, timeout=3000)
+            cache.set('nalo_api_token', token, timeout=3000)  # 50 minutes
             logger.info('Nalo token obtained and cached')
             return token
         
-        if data.get('success'):
-            logger.info('Nalo: using auth_key directly as token')
-            return auth_key
-            
-        logger.warning(f'Nalo: no token in response: {data}')
-        return auth_key
+        logger.error(f'Nalo: could not extract token from response: {data}')
+        return None
         
     except Exception as e:
         logger.error(f'Nalo token error: {e}')
@@ -150,7 +152,6 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
         
         # Use international format (233XXXXXXXXX) for NALOPAY
         if clean_phone.startswith('0'):
-            # If it starts with 0, convert to 233 format
             account_number = '233' + clean_phone[1:]
         elif clean_phone.startswith('233'):
             account_number = clean_phone
@@ -191,14 +192,14 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
             }
         }
         
-        headers = {'Content-Type': 'application/json'}
-        
-        if token.startswith('Basic '):
-            headers['Authorization'] = token
-        else:
-            headers['Authorization'] = f'Bearer {token}'
+        # IMPORTANT: Use Bearer token, NOT Basic auth
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {token}'
+        }
         
         logger.info(f'Nalo collection payload: {payload}')
+        logger.info(f'Nalo collection headers: Authorization: Bearer {token[:20]}...')
         
         resp = _requests.post(
             NALO_COLLECT_URL,
@@ -207,15 +208,18 @@ def _trigger_momo_payment(msisdn, amount, reference, description, account_name, 
             timeout=15,
         )
         
-        logger.info(f'Nalo collection response: {resp.status_code} - {resp.text[:300]}')
+        logger.info(f'Nalo collection response: {resp.status_code} - {resp.text[:500]}')
         
         if resp.status_code in (200, 201, 202):
             data = resp.json()
             if data.get('success'):
                 logger.info(f'Nalo payment initiated: {reference}')
                 return True
+            else:
+                logger.warning(f'Nalo collection failed: {data.get("code")} - {data.get("error")}')
+                return False
         
-        logger.warning(f'Nalo collection failed: {resp.status_code} - {resp.text[:200]}')
+        logger.warning(f'Nalo collection HTTP error: {resp.status_code}')
         return False
         
     except Exception as e:
@@ -236,11 +240,10 @@ def _send_sms_confirmation(msisdn, cand_name, qty, reference):
             logger.info(f'SMS not sent (no token): {msg}')
             return
         
-        headers = {'Content-Type': 'application/json'}
-        if token.startswith('Basic '):
-            headers['Authorization'] = token
-        else:
-            headers['Authorization'] = f'Bearer {token}'
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {token}'
+        }
         
         clean_phone = msisdn.replace('+', '').replace(' ', '')
         
