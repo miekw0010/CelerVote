@@ -142,6 +142,7 @@ class PaymentStatusView(APIView):
     call to succeed.
     """
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def get(self, request, reference):
         from apps.voting.models import Vote
