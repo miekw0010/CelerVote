@@ -40,7 +40,6 @@ export function PaymentModal({
   const verifiedRef = useRef(false);
   const currentReferenceRef = useRef<string>("");
 
-  // isGuest is fixed on mount — computed once from the initial email value.
   const isGuestRef = useRef(!email || email === "voter@celervote.com" || email === "");
   const isGuest = isGuestRef.current;
 
@@ -54,13 +53,11 @@ export function PaymentModal({
     return raw;
   };
 
-  // Always use localPhone for guest — don't depend on parent email re-derivation
   const effectivePhone = localPhone || guestPhone;
   const effectiveEmail = isGuest && effectivePhone
     ? effectivePhone.replace(/^\+/, "").replace(/\s/g, "") + "@celervote.com"
     : email;
 
-  // Reset to review every time modal opens
   useEffect(() => {
     if (open) {
       setStep("review");
@@ -68,17 +65,14 @@ export function PaymentModal({
       setLocalPhone("");
       verifiedRef.current = false;
       currentReferenceRef.current = "";
-      // Stop any existing polling
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
-      // Re-evaluate isGuest on fresh open
       isGuestRef.current = !email || email === "voter@celervote.com" || email === "";
     }
   }, [open]);
 
-  // Cleanup polling on unmount
   useEffect(() => {
     return () => {
       if (pollingRef.current) {
@@ -94,32 +88,22 @@ export function PaymentModal({
     try {
       const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
       const token = getAccessToken() || "";
-      
       const res = await fetch(`${API}/payments/status/${ref}/`, {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-        },
+        headers: { "Authorization": `Bearer ${token}` },
       });
       const data = await res.json();
-      
-      if (data.votes_cast > 0 || data.status === 'success') {
+
+      if (data.votes_cast > 0 || data.status === "success") {
         verifiedRef.current = true;
-        
-        // Stop polling
         if (pollingRef.current) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
         }
-        
-        // Show success UI
         setStep("success");
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
         setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
         setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.8 }, colors: ["#01003c", "#C9A84C"] }), 500);
-        
-        setTimeout(() => {
-          onSuccess(ref);
-        }, 1800);
+        setTimeout(() => { onSuccess(ref); }, 1800);
         return true;
       }
       return false;
@@ -131,42 +115,32 @@ export function PaymentModal({
 
   const startPolling = (reference: string) => {
     let pollCount = 0;
-    const MAX_POLLS = 12; // 12 * 5 seconds = 60 seconds max
-    
-    // Clear any existing polling
+    const MAX_POLLS = 24; // 24 × 5s = 2 minutes (covers slow MoMo networks)
+
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
-    
+
     pollingRef.current = setInterval(async () => {
       if (verifiedRef.current) {
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-        }
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
         return;
       }
-      
       pollCount++;
       if (pollCount > MAX_POLLS) {
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-        }
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
         if (!verifiedRef.current) {
-          setErrMsg("Payment confirmation is taking longer than expected. Please check your votes or contact support.");
+          setErrMsg("Payment confirmation is taking longer than expected. Please check your votes or contact support with your reference: " + currentReferenceRef.current);
           setStep("failed");
         }
         return;
       }
-      
       await checkPaymentStatus(reference);
-    }, 5000); // Check every 5 seconds
+    }, 5000);
   };
 
   const handlePay = async () => {
-    // Guest voter — validate phone first
     if (isGuest) {
       if (!effectivePhone) {
         setErrMsg("Please enter your phone number to continue.");
@@ -186,12 +160,11 @@ export function PaymentModal({
       return;
     }
     setStep("processing");
-    
+
     try {
       const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
       const token = getAccessToken() || "";
 
-      console.log("Initializing payment:", { eventSlug, categoryId, email, quantity });
       const res = await fetch(`${API}/payments/initialize/`, {
         method: "POST",
         headers: {
@@ -199,18 +172,17 @@ export function PaymentModal({
           "Authorization": `Bearer ${token}`,
         },
         body: JSON.stringify({
-          event_slug: eventSlug,
-          votes_count: quantity,
-          email: effectiveEmail,
-          phone: effectivePhone ? normalizePhone(effectivePhone) : "",
-          category_id: categoryId,
+          event_slug:   eventSlug,
+          votes_count:  quantity,
+          email:        effectiveEmail,
+          phone:        effectivePhone ? normalizePhone(effectivePhone) : "",
+          category_id:  categoryId,
           candidate_id: candidateId,
         }),
       });
 
       if (!res.ok) {
         const err = await res.json();
-        console.log("Init error:", err);
         throw new Error(err.error || "Failed to initialize payment");
       }
 
@@ -219,70 +191,55 @@ export function PaymentModal({
       currentReferenceRef.current = reference;
       verifiedRef.current = false;
 
-      // ── Step 2: Open Paystack with V2 (more reliable) ──
-      if (typeof Paystack === "undefined") { throw new Error("Payment library not loaded yet. Please wait a moment and try again."); }
-      const paystack = new Paystack();
-      paystack.newTransaction({
-        key: PUBLIC_KEY,
-        email: effectiveEmail,
-        amount: Math.round(totalAmount * 100),
-        currency: "GHS",
-        ref: reference,
-        channels: ["card", "mobile_money", "bank_transfer"],
-        label: "CelerVote",
-        metadata: {
-          custom_fields: [
-            { display_name: "Event", variable_name: "event", value: eventTitle },
-            { display_name: "Candidate", variable_name: "candidate", value: candidateName },
-            { display_name: "Votes", variable_name: "votes", value: String(quantity) },
-          ]
-        },
+      // ── FIX: Use accessCode to open the EXISTING backend transaction ──────
+      // Passing key+email+amount creates a SECOND transaction with a different
+      // reference. The webhook fires for the backend reference but castVote()
+      // sends the new one → "Payment not found" every time.
+      // accessCode IS the transaction — Paystack already has all the details.
+      if (typeof Paystack === "undefined") {
+        throw new Error("Payment library not loaded yet. Please wait a moment and try again.");
+      }
+      const paystackInstance = new Paystack();
+      paystackInstance.newTransaction({
+        accessCode: data.access_code,
+
         onSuccess: (transaction: any) => {
-          console.log("Payment successful!", transaction.reference);
+          console.log("Paystack onSuccess:", transaction.reference);
           verifiedRef.current = true;
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-          }
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
           setStep("success");
           confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
           setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
           setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.8 }, colors: ["#01003c", "#C9A84C"] }), 500);
-          setTimeout(() => {
-            onSuccess(transaction.reference || reference);
-          }, 1800);
+          // Use backend reference — transaction.reference is the same when accessCode is used
+          setTimeout(() => { onSuccess(reference); }, 1800);
         },
+
         onCancel: () => {
-          console.log("Payment cancelled");
+          console.log("Paystack cancelled");
           if (!verifiedRef.current) {
-            if (pollingRef.current) {
-              clearInterval(pollingRef.current);
-              pollingRef.current = null;
-            }
+            if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
             setStep("review");
           }
         },
+
         onError: (error: any) => {
-          console.error("Payment error:", error);
+          console.error("Paystack error:", error);
           if (!verifiedRef.current) {
-            if (pollingRef.current) {
-              clearInterval(pollingRef.current);
-              pollingRef.current = null;
-            }
+            if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
             setErrMsg(error.message || "Payment failed to load");
             setStep("failed");
           }
-        }
+        },
       });
-      
-      // 🔥 START POLLING - This is the key addition that makes it work like tickets!
+
+      // Poll /payments/status/ every 5 s as a safety net:
+      // If onSuccess fires before castVote() completes (MoMo delay),
+      // polling detects votes_cast > 0 and shows success automatically.
       startPolling(reference);
 
     } catch (err: any) {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       setErrMsg(err.message || "Payment initialization failed.");
       setStep("failed");
     }
@@ -290,10 +247,7 @@ export function PaymentModal({
 
   const handleClose = () => {
     if (step === "processing") return;
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
     setStep("review");
     setErrMsg("");
     onClose();
@@ -301,12 +255,7 @@ export function PaymentModal({
 
   const manualCheckStatus = async () => {
     const ref = currentReferenceRef.current;
-    if (!ref) {
-      setErrMsg("No payment reference found.");
-      setStep("failed");
-      return;
-    }
-    
+    if (!ref) { setErrMsg("No payment reference found."); setStep("failed"); return; }
     setStep("processing");
     try {
       const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
@@ -315,8 +264,7 @@ export function PaymentModal({
         headers: { "Authorization": `Bearer ${token}` },
       });
       const data = await res.json();
-      
-      if (data.votes_cast > 0) {
+      if (data.votes_cast > 0 || data.status === "success") {
         setStep("success");
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
         setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
@@ -324,7 +272,7 @@ export function PaymentModal({
         setTimeout(() => onSuccess(ref), 1800);
         return;
       }
-      setErrMsg("Vote not yet confirmed. Please wait or contact support.");
+      setErrMsg("Vote not yet confirmed. Please wait a moment and try again, or contact support with ref: " + ref);
       setStep("failed");
     } catch (e) {
       setErrMsg("Could not check status. Please try again.");
@@ -339,13 +287,11 @@ export function PaymentModal({
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         >
-          {/* Backdrop */}
           <motion.div
             className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={handleClose}
           />
 
-          {/* Modal */}
           <motion.div
             className="relative w-full max-w-md z-10"
             initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }}
@@ -376,17 +322,15 @@ export function PaymentModal({
             <div className="bg-[#1e293b] rounded-b-2xl overflow-hidden">
               <AnimatePresence mode="wait">
 
-                {/* ── Review Step ── */}
+                {/* ── Review ── */}
                 {step === "review" && (
                   <motion.div key="review"
                     initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 10 }}
                     className="p-5 space-y-4">
 
-                    {/* Order summary */}
                     <div className="bg-[#0f172a] rounded-xl p-4 space-y-3">
                       <p className="text-xs text-[#64748b] uppercase tracking-wider font-semibold">Order Summary</p>
-
                       <div className="space-y-2">
                         <div className="flex justify-between items-start">
                           <span className="text-xs text-[#94a3b8]">Event</span>
@@ -407,7 +351,6 @@ export function PaymentModal({
                       </div>
                     </div>
 
-                    {/* Payment methods */}
                     <div>
                       <p className="text-xs text-[#64748b] uppercase tracking-wider font-semibold mb-2">Pay With</p>
                       <div className="grid grid-cols-3 gap-2">
@@ -425,7 +368,6 @@ export function PaymentModal({
                       </div>
                     </div>
 
-                    {/* Guest phone input — shown when user is not logged in */}
                     {isGuest && (
                       <div className="space-y-1.5">
                         <p className="text-xs text-[#64748b] uppercase tracking-wider font-semibold">Your Phone Number</p>
@@ -433,20 +375,14 @@ export function PaymentModal({
                           type="tel"
                           placeholder="0241234567 or +233241234567"
                           value={effectivePhone}
-                          onChange={e => {
-                            setLocalPhone(e.target.value);
-                          }}
-                          onBlur={e => {
-                            const normalized = normalizePhone(e.target.value);
-                            setLocalPhone(normalized);
-                          }}
+                          onChange={e => { setLocalPhone(e.target.value); }}
+                          onBlur={e => { setLocalPhone(normalizePhone(e.target.value)); }}
                           className="w-full h-10 rounded-lg bg-[#0f172a] border border-white/10 text-white text-sm px-3 focus:outline-none focus:border-white/30 placeholder:text-[#475569]"
                         />
                         <p className="text-[10px] text-[#475569]">Used to identify your vote. No account needed.</p>
                       </div>
                     )}
 
-                    {/* Pay button */}
                     <button
                       onClick={handlePay}
                       className="w-full h-12 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all"
@@ -457,7 +393,6 @@ export function PaymentModal({
                       <ChevronRight className="w-4 h-4" />
                     </button>
 
-                    {/* Trust badges */}
                     <div className="flex items-center justify-center gap-4 pt-1">
                       <div className="flex items-center gap-1">
                         <Shield className="w-3 h-3 text-[#94a3b8]" />
@@ -471,7 +406,7 @@ export function PaymentModal({
                   </motion.div>
                 )}
 
-                {/* ── Processing Step ── */}
+                {/* ── Processing ── */}
                 {step === "processing" && (
                   <motion.div key="processing"
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -485,14 +420,14 @@ export function PaymentModal({
                       <p className="text-xs text-[#94a3b8]">
                         📱 <strong>Mobile Money users:</strong> check your phone for a PIN prompt and approve it.
                       </p>
-                      <p className="text-xs text-[#64748b] mt-1">
+                      <p className="text-xs text-[#64748b]">
                         Mobile Money can take up to 3 minutes. Do not close this window.
                       </p>
                     </div>
                   </motion.div>
                 )}
 
-                {/* ── Success Step ── */}
+                {/* ── Success ── */}
                 {step === "success" && (
                   <motion.div key="success"
                     initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
@@ -511,7 +446,7 @@ export function PaymentModal({
                   </motion.div>
                 )}
 
-                {/* ── Failed Step with Manual Check Button ── */}
+                {/* ── Failed ── */}
                 {step === "failed" && (
                   <motion.div key="failed"
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -524,14 +459,10 @@ export function PaymentModal({
                       <p className="text-xs text-[#64748b] mt-1">{errMsg || "Your payment may have been processed. Please check your vote status."}</p>
                     </div>
                     <div className="flex gap-3">
-                      <Button 
-                        onClick={manualCheckStatus}
-                        variant="outline" 
-                        size="sm"
-                      >
+                      <Button onClick={manualCheckStatus} variant="outline" size="sm">
                         Check Vote Status
                       </Button>
-                      <Button onClick={() => setStep("review")} variant="outline" size="sm">
+                      <Button onClick={() => { setStep("review"); setErrMsg(""); }} variant="outline" size="sm">
                         Try Again
                       </Button>
                     </div>
