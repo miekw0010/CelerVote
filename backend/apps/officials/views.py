@@ -267,27 +267,34 @@ class OfficialDashboardView(APIView, IsOfficialPermission):
         }
 
     def _revenue_stats(self, official):
+        """
+        Calculate revenue statistics for an election official.
+        FIXED: Removed invalid 'quantity' field from Vote aggregation.
+        """
         from apps.payments.models import Payment
         from apps.voting.models import Vote
         from django.db.models import Sum as _Sum
+
         payments = Payment.objects.filter(event=official.event)
-        # Use actual Vote records as the source of truth for vote count
-        actual_votes = Vote.objects.filter(
+
+        # Count total votes - simple count of Vote records
+        total_votes = Vote.objects.filter(
             category__event=official.event
-        ).aggregate(total=_Sum('quantity'))['total'] or 0
+        ).count()
+
         return {
-            'total_votes':     actual_votes,
-            'total_revenue':   float(payments.filter(status='success').aggregate(
+            'total_votes': total_votes,
+            'total_revenue': float(payments.filter(status='success').aggregate(
                 t=_Sum('amount')
             )['t'] or 0),
             'pending_revenue': float(payments.filter(status='pending').aggregate(
                 t=_Sum('amount')
             )['t'] or 0),
             'failed_payments': payments.filter(status='failed').count(),
-            'my_percentage':   float(official.revenue_percentage),
-            'my_earned':       official.total_earned,
-            'my_balance':      official.current_balance,
-            'my_withdrawn':    official.total_withdrawn,
+            'my_percentage': float(official.revenue_percentage),
+            'my_earned': official.total_earned,
+            'my_balance': official.current_balance,
+            'my_withdrawn': official.total_withdrawn,
         }
 
     def _voter_roll_stats(self, official):

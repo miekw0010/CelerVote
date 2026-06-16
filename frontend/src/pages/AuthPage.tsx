@@ -20,9 +20,7 @@ const isValidEmail = (val: string) =>
 const normalizePhone = (raw: string): string => {
   let cleaned = raw.replace(/[\s\-\(\)]/g, "");
   if (cleaned.startsWith("+")) cleaned = cleaned.slice(1);
-  // Fix: +233 followed by local 0XXXXXXXXX e.g. +2330241234567 -> 233241234567
   if (cleaned.startsWith("2330") && cleaned.length === 13) cleaned = "233" + cleaned.slice(4);
-  // Local Ghanaian 0XXXXXXXXX -> 233XXXXXXXXX
   if (cleaned.startsWith("0") && cleaned.length === 10) cleaned = "233" + cleaned.slice(1);
   if (cleaned.startsWith("233") && cleaned.length === 12) return "+" + cleaned;
   if (cleaned.length >= 7 && /^\d+$/.test(cleaned)) return "+" + cleaned;
@@ -434,6 +432,19 @@ const AuthPage = () => {
               )}
 
             </AnimatePresence>
+
+            {/* ── Officials Login Link ── */}
+            <div className="mt-6 pt-4 border-t border-border/30">
+              <button
+                onClick={() => navigate("/official/login")}
+                className="w-full text-center text-sm text-muted-foreground hover:text-[#002856] transition-colors flex items-center justify-center gap-2"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                Officials Login
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
           </div>
 
           <p className="text-xs text-muted-foreground text-center mt-5 flex items-center justify-center gap-1.5">
