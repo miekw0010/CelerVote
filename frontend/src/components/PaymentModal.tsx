@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { getAccessToken } from "../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
-declare const Paystack: any;
+declare const PaystackPop: any;
 import {
   X, Shield, CreditCard, Smartphone, Lock,
   CheckCircle2, Loader2, ChevronRight, AlertCircle
@@ -191,15 +191,39 @@ export function PaymentModal({
       currentReferenceRef.current = reference;
       verifiedRef.current = false;
 
-      // ── FIX: Use accessCode to open the EXISTING backend transaction ──────
-      // Passing key+email+amount creates a SECOND transaction with a different
-      // reference. The webhook fires for the backend reference but castVote()
-      // sends the new one → "Payment not found" every time.
-      // accessCode IS the transaction — Paystack already has all the details.
-      if (typeof Paystack === "undefined") {
-        throw new Error("Payment library not loaded yet. Please wait a moment and try again.");
+      // ── Wait for Paystack V2 library to be ready (max 10 seconds) ──────────
+      // The script tag in index.html loads it but CDN can be slow on mobile.
+      // We wait here (AFTER the backend call succeeded) so the user isn't
+      // blocked before we even know if payment init worked.
+      const getPaystackConstructor = (): any => {
+        // Paystack V2 inline.js exposes either window.Paystack or window.PaystackPop
+        if (typeof (window as any).Paystack !== "undefined") return (window as any).Paystack;
+        if (typeof (window as any).PaystackPop !== "undefined") return (window as any).PaystackPop;
+        return null;
+      };
+
+      let PaystackConstructor = getPaystackConstructor();
+      if (!PaystackConstructor) {
+        // Not loaded yet — poll every 500ms for up to 10 seconds
+        await new Promise<void>((resolve, reject) => {
+          let waited = 0;
+          const interval = setInterval(() => {
+            PaystackConstructor = getPaystackConstructor();
+            if (PaystackConstructor) { clearInterval(interval); resolve(); return; }
+            waited += 500;
+            if (waited >= 10000) {
+              clearInterval(interval);
+              reject(new Error("Payment library failed to load. Please refresh the page and try again."));
+            }
+          }, 500);
+        });
       }
-      const paystackInstance = new Paystack();
+
+      // ── Open the EXISTING backend transaction via accessCode ──────────────
+      // Using key+email+amount creates a NEW transaction with a different
+      // reference — webhook fires for EVOTE-xxx but castVote sends T8675309.
+      // accessCode opens the transaction the backend already created.
+      const paystackInstance = new PaystackConstructor();
       paystackInstance.newTransaction({
         accessCode: data.access_code,
 
