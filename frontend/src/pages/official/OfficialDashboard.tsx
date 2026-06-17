@@ -524,151 +524,247 @@ function TicketDashboard({ profile, stats, ticketRevStats, onWithdrawRequest, da
 // ── CHART COLOURS ────────────────────────────────────────────────────────────
 const CHART_COLORS = ["#6366f1","#C9A84C","#22c55e","#f59e0b","#ec4899","#14b8a6","#8b5cf6","#ef4444","#3b82f6","#f97316"];
 
-// ── Single category results card with bar + pie charts ────────────────────────
-function CategoryResultCard({ cat, accentIdx = 0 }: { cat: any; accentIdx?: number }) {
+// ── Single category results card ─────────────────────────────────────────────
+function CategoryResultCard({ cat, accentIdx = 0, defaultExpanded = false }: {
+  cat: any; accentIdx?: number; defaultExpanded?: boolean;
+}) {
   const candidates = [...(cat.candidates || [])].sort((a: any, b: any) => b.vote_count - a.vote_count);
-  const total = candidates.reduce((s: number, c: any) => s + c.vote_count, 0);
-  const [chartType, setChartType] = useState<"bar" | "pie">("pie");
+  const total      = candidates.reduce((s: number, c: any) => s + c.vote_count, 0);
 
-  const barData = candidates.map((c: any) => ({
-    name: c.name.length > 14 ? c.name.slice(0, 13) + "…" : c.name,
+  const [expanded,  setExpanded]  = useState(defaultExpanded);
+  const [showAll,   setShowAll]   = useState(false);
+  const [chartType, setChartType] = useState<"bar" | "pie">("bar");
+
+  const INITIAL_SHOW = 5;
+  const visible  = showAll ? candidates : candidates.slice(0, INITIAL_SHOW);
+  const hasMore  = candidates.length > INITIAL_SHOW;
+
+  // Upright bar chart data — categories on X axis
+  const barData = visible.map((c: any) => ({
+    name:     c.name.length > 14 ? c.name.slice(0, 13) + "…" : c.name,
     fullName: c.name,
-    votes: c.vote_count,
-    pct:   total > 0 ? Math.round((c.vote_count / total) * 100) : 0,
+    votes:    c.vote_count,
+    pct:      total > 0 ? Math.round((c.vote_count / total) * 100) : 0,
   }));
 
-  const pieData = candidates.map((c: any, i: number) => ({
-    name: c.name,
-    value: c.vote_count,
-    color: CHART_COLORS[i % CHART_COLORS.length],
-  })).filter(d => d.value > 0);
+  // Pie chart data
+  const pieData = visible
+    .map((c: any, i: number) => ({ name: c.name, value: c.vote_count, color: CHART_COLORS[(accentIdx + i) % CHART_COLORS.length] }))
+    .filter(d => d.value > 0);
 
   return (
-    <div className="bg-card border border-border/40 rounded-2xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/30 flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-sm">{cat.category_name}</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">{total.toLocaleString()} votes · {candidates.length} candidates</p>
-        </div>
-        <div className="flex gap-1 p-0.5 bg-muted rounded-lg">
-          <button onClick={() => setChartType("bar")}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${chartType === "bar" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>
-            Bar
-          </button>
-          <button onClick={() => setChartType("pie")}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${chartType === "pie" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>
-            Pie
-          </button>
-        </div>
-      </div>
-      <div className="p-4">
-        {/* Winner highlight */}
-        {candidates[0] && total > 0 && (
-          <div className="flex items-center gap-3 mb-4 px-3 py-2.5 rounded-xl bg-secondary/8 border border-secondary/20">
-            <span className="text-lg">🏆</span>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-sm text-secondary truncate">{candidates[0].name}</p>
-              <p className="text-xs text-muted-foreground">{candidates[0].vote_count.toLocaleString()} votes · {total > 0 ? Math.round((candidates[0].vote_count / total) * 100) : 0}%</p>
-            </div>
-          </div>
-        )}
-
-        {/* Chart */}
-        {total > 0 && (
-          <div className="mb-4">
-            {chartType === "bar" ? (
-              <ResponsiveContainer width="100%" height={160}>
-                <RBarChart data={barData} margin={{ top: 4, right: 8, bottom: 24, left: 0 }}>
-                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} interval={0} />
-                  <YAxis hide />
-                  <Tooltip
-                    cursor={{ fill: "rgba(99,102,241,0.06)" }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.[0]) return null;
-                      const d = payload[0].payload;
-                      return (
-                        <div className="bg-card border border-border/40 rounded-xl px-3 py-2 text-xs shadow-lg">
-                          <p className="font-semibold mb-0.5">{d.fullName}</p>
-                          <p className="text-muted-foreground">{d.votes.toLocaleString()} votes · {d.pct}%</p>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Bar dataKey="votes" radius={[6, 6, 0, 0]}>
-                    {barData.map((_: any, i: number) => (
-                      <Cell key={i} fill={i === 0 ? CHART_COLORS[accentIdx % CHART_COLORS.length] : "rgba(99,102,241,0.3)"} />
-                    ))}
-                  </Bar>
-                </RBarChart>
-              </ResponsiveContainer>
-            ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <RPieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value">
-                    {pieData.map((entry: any, i: number) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.[0]) return null;
-                      const d = payload[0].payload;
-                      const pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
-                      return (
-                        <div className="bg-card border border-border/40 rounded-xl px-3 py-2 text-xs shadow-lg">
-                          <p className="font-semibold mb-0.5">{d.name}</p>
-                          <p className="text-muted-foreground">{d.value.toLocaleString()} votes · {pct}%</p>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Legend iconType="circle" iconSize={8} formatter={(v: string) => <span style={{ fontSize: 11 }}>{v}</span>} />
-                </RPieChart>
-              </ResponsiveContainer>
+    <div className="bg-card border border-border/40 rounded-2xl overflow-hidden w-full">
+      {/* Collapsible header */}
+      <button
+        className="w-full px-4 py-3 border-b border-border/30 flex items-center justify-between gap-3 hover:bg-muted/20 transition-colors text-left"
+        onClick={() => setExpanded(e => !e)}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-sm truncate">{cat.category_name}</h3>
+            {total > 0 && candidates[0] && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-secondary/10 text-secondary border border-secondary/20 font-medium flex-shrink-0 truncate max-w-[140px]">
+                🏆 {candidates[0].name.length > 16 ? candidates[0].name.slice(0, 15) + "…" : candidates[0].name}
+              </span>
             )}
           </div>
-        )}
-
-        {/* Progress bars list */}
-        <div className="space-y-2">
-          {candidates.map((c: any, i: number) => {
-            const pct = total > 0 ? Math.round((c.vote_count / total) * 100) : 0;
-            return (
-              <div key={c.id} className="flex items-center gap-3">
-                <div className="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-black text-white"
-                  style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}>
-                  {i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between text-xs mb-0.5">
-                    <span className={`font-medium truncate ${i === 0 && total > 0 ? "text-secondary" : "text-foreground"}`}>{c.name}</span>
-                    <span className="text-muted-foreground ml-2 flex-shrink-0">{c.vote_count.toLocaleString()} ({pct}%)</span>
-                  </div>
-                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                    <motion.div className="h-full rounded-full"
-                      style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
-                      initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.7, delay: i * 0.05 }} />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {total.toLocaleString()} votes · {candidates.length} candidates
+          </p>
         </div>
-      </div>
+        <div className={`text-muted-foreground transition-transform flex-shrink-0 ${expanded ? "rotate-180" : ""}`}>
+          <ChevronRight className="w-4 h-4 rotate-90" />
+        </div>
+      </button>
+
+      {/* Expandable body */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="p-4 space-y-4">
+
+              {/* Chart type toggle */}
+              {total > 0 && (
+                <div className="flex gap-1 p-0.5 bg-muted rounded-lg w-fit">
+                  {(["bar", "pie"] as const).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setChartType(t)}
+                      className={`px-3 py-1 rounded-md text-xs font-medium transition-all capitalize ${
+                        chartType === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"
+                      }`}
+                    >
+                      {t === "bar" ? "Bar Chart" : "Pie Chart"}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Charts */}
+              {total > 0 && (
+                <div className="w-full overflow-hidden">
+                  {chartType === "bar" ? (
+                    /* Upright bar chart — candidates on X axis, votes on Y */
+                    <ResponsiveContainer width="100%" height={200}>
+                      <RBarChart
+                        data={barData}
+                        margin={{ top: 8, right: 8, bottom: 40, left: 0 }}
+                      >
+                        <XAxis
+                          dataKey="name"
+                          tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                          axisLine={false}
+                          tickLine={false}
+                          interval={0}
+                          angle={barData.length > 5 ? -35 : 0}
+                          textAnchor={barData.length > 5 ? "end" : "middle"}
+                          height={barData.length > 5 ? 56 : 30}
+                        />
+                        <YAxis
+                          hide
+                        />
+                        <Tooltip
+                          cursor={{ fill: "rgba(99,102,241,0.06)" }}
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.[0]) return null;
+                            const d = payload[0].payload;
+                            return (
+                              <div className="bg-card border border-border/40 rounded-xl px-3 py-2 text-xs shadow-lg max-w-[180px]">
+                                <p className="font-semibold mb-0.5 break-words">{d.fullName}</p>
+                                <p className="text-muted-foreground">{d.votes.toLocaleString()} votes · {d.pct}%</p>
+                              </div>
+                            );
+                          }}
+                        />
+                        <Bar dataKey="votes" radius={[4, 4, 0, 0]}>
+                          {barData.map((_: any, i: number) => (
+                            <Cell key={i} fill={CHART_COLORS[(accentIdx + i) % CHART_COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </RBarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    /* Pie chart */
+                    <ResponsiveContainer width="100%" height={220}>
+                      <RPieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="45%"
+                          innerRadius="28%"
+                          outerRadius="58%"
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {pieData.map((entry: any, i: number) => (
+                            <Cell key={i} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.[0]) return null;
+                            const d = payload[0].payload;
+                            const pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
+                            return (
+                              <div className="bg-card border border-border/40 rounded-xl px-3 py-2 text-xs shadow-lg max-w-[180px]">
+                                <p className="font-semibold mb-0.5 break-words">{d.name}</p>
+                                <p className="text-muted-foreground">{d.value.toLocaleString()} votes · {pct}%</p>
+                              </div>
+                            );
+                          }}
+                        />
+                        <Legend
+                          iconType="circle"
+                          iconSize={7}
+                          formatter={(v: string) => (
+                            <span style={{ fontSize: 10 }}>
+                              {v.length > 20 ? v.slice(0, 19) + "…" : v}
+                            </span>
+                          )}
+                          wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
+                        />
+                      </RPieChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              )}
+
+              {/* Progress list */}
+              <div className="space-y-2">
+                {visible.map((c: any, i: number) => {
+                  const pct = total > 0 ? Math.round((c.vote_count / total) * 100) : 0;
+                  return (
+                    <div key={c.id} className="flex items-start gap-2">
+                      <div
+                        className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-black text-white mt-0.5"
+                        style={{ background: CHART_COLORS[(accentIdx + i) % CHART_COLORS.length] }}
+                      >
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                          <span
+                            className={`text-xs font-medium break-words ${i === 0 && total > 0 ? "text-secondary" : "text-foreground"}`}
+                            style={{ maxWidth: "calc(100% - 80px)" }}
+                          >
+                            {c.name}
+                          </span>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            {c.vote_count.toLocaleString()} <span className="opacity-60">({pct}%)</span>
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden mt-1">
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{
+                              width: `${pct}%`,
+                              background: CHART_COLORS[(accentIdx + i) % CHART_COLORS.length],
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Show more / less */}
+              {hasMore && (
+                <button
+                  onClick={() => setShowAll(s => !s)}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground py-2 border border-border/30 rounded-xl transition-colors"
+                >
+                  {showAll
+                    ? `Show top ${INITIAL_SHOW} only`
+                    : `Show all ${candidates.length} candidates`}
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-// ── Full results section — standard or org ────────────────────────────────────
-function ResultsView({ results, isOrg }: { results: any[]; isOrg: boolean }) {
-  if (results.length === 0) return <div className="text-center py-16 text-muted-foreground">No results yet.</div>;
 
-  // Split into global categories and group categories using is_global from backend
-  const globalCats = results.filter((cat: any) => cat.is_global !== false);
-  const groupCats  = results.filter((cat: any) => cat.is_global === false);
+// ── ResultsView ───────────────────────────────────────────────────────────────
+function ResultsView({ results, isOrg }: { results: any[]; isOrg: boolean }) {
+  if (results.length === 0) return (
+    <div className="text-center py-16 text-muted-foreground text-sm">No results yet.</div>
+  );
+
+  const globalCats   = results.filter((cat: any) => cat.is_global !== false);
+  const groupCats    = results.filter((cat: any) => cat.is_global === false);
   const hasGroupCats = isOrg && groupCats.length > 0;
 
-  // Collect unique groups from group categories
   const groupMap: Record<string, string> = {};
   groupCats.forEach((cat: any) => {
     (cat.group_ids || []).forEach((gid: string, idx: number) => {
@@ -677,116 +773,132 @@ function ResultsView({ results, isOrg }: { results: any[]; isOrg: boolean }) {
   });
   const groups = Object.entries(groupMap).map(([id, name]) => ({ id, name }));
 
-  // Overall analytics
-  const totalVotes = results.reduce((s: number, cat: any) =>
+  const grandTotal = results.reduce((s: number, cat: any) =>
     s + (cat.candidates || []).reduce((ss: number, c: any) => ss + c.vote_count, 0), 0);
-  const leaders = results.map((cat: any) => {
-    const sorted = [...(cat.candidates || [])].sort((a: any, b: any) => b.vote_count - a.vote_count);
-    return sorted[0]?.vote_count > 0 ? { cat: cat.category_name, name: sorted[0].name, votes: sorted[0].vote_count } : null;
-  }).filter(Boolean);
 
-  // Pie chart data for overall vote distribution across categories
-  const distData = results.map((cat: any, i: number) => ({
-    name: cat.category_name,
-    value: (cat.candidates || []).reduce((s: number, c: any) => s + c.vote_count, 0),
-    color: CHART_COLORS[i % CHART_COLORS.length],
-  })).filter(d => d.value > 0);
+  const [groupTab,   setGroupTab]  = useState<string>(groups[0]?.id || "");
+  const [expandAll,  setExpandAll] = useState(false);
 
-  const [groupTab, setGroupTab] = useState<string>(groups[0]?.id || "");
+  // Per-category totals for summary
+  const catTotals = results.map((cat: any) => ({
+    name:  cat.category_name,
+    total: (cat.candidates || []).reduce((s: number, c: any) => s + c.vote_count, 0),
+    pct:   grandTotal > 0
+      ? Math.round(((cat.candidates || []).reduce((s: number, c: any) => s + c.vote_count, 0) / grandTotal) * 100)
+      : 0,
+  }));
 
   return (
-    <div className="space-y-5">
-      {/* ── Analytics overview card ── */}
-      <div className="bg-card border border-secondary/20 rounded-2xl p-5">
-        <h3 className="font-bold text-sm mb-4 flex items-center gap-2">
-          <PieChart className="w-4 h-4 text-secondary" /> Overview Analytics
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
-          <div className="bg-muted/40 rounded-xl p-3">
-            <p className="text-2xl font-black">{totalVotes.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">Total votes cast</p>
-          </div>
-          <div className="bg-muted/40 rounded-xl p-3">
-            <p className="text-2xl font-black">{results.length}</p>
-            <p className="text-xs text-muted-foreground">Categories</p>
-          </div>
-          {hasGroupCats && (
-            <div className="bg-muted/40 rounded-xl p-3">
-              <p className="text-2xl font-black">{groups.length}</p>
-              <p className="text-xs text-muted-foreground">Groups</p>
-            </div>
-          )}
-        </div>
-        {/* Vote distribution pie */}
-        {distData.length > 0 && (
-          <div className="mb-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold mb-2">Vote distribution by category</p>
-            <ResponsiveContainer width="100%" height={180}>
-              <RPieChart>
-                <Pie data={distData} cx="50%" cy="50%" outerRadius={70} paddingAngle={2} dataKey="value">
-                  {distData.map((d: any, i: number) => <Cell key={i} fill={d.color} />)}
-                </Pie>
-                <Tooltip content={({ active, payload }) => {
-                  if (!active || !payload?.[0]) return null;
-                  const d = payload[0].payload;
-                  return <div className="bg-card border border-border/40 rounded-xl px-3 py-2 text-xs shadow-lg"><p className="font-semibold">{d.name}</p><p className="text-muted-foreground">{d.value.toLocaleString()} votes</p></div>;
-                }} />
-                <Legend iconType="circle" iconSize={7} formatter={(v: string) => <span style={{ fontSize: 10 }}>{v}</span>} />
-              </RPieChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+    <div className="space-y-4 w-full">
 
+      {/* ── Summary — category totals only, no ranking, no pie ── */}
+      <div className="bg-card border border-secondary/20 rounded-2xl p-4 w-full">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 className="font-bold text-sm flex items-center gap-2">
+            <BarChart2 className="w-4 h-4 text-secondary" /> Summary
+          </h3>
+          <span className="text-xs text-muted-foreground">
+            <span className="font-bold text-foreground">{grandTotal.toLocaleString()}</span> total votes across {results.length} categories
+          </span>
+        </div>
+
+        {/* Category totals list — no ranking, just name + total + % of grand total */}
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+          {catTotals.map((c, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-baseline gap-2 mb-1">
+                  <span className="text-xs font-medium truncate text-foreground">{c.name}</span>
+                  <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                    {c.total.toLocaleString()} <span className="opacity-60">({c.pct}%)</span>
+                  </span>
+                </div>
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{
+                      width: `${c.pct}%`,
+                      background: CHART_COLORS[i % CHART_COLORS.length],
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Expand/collapse all ── */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">{results.length} categories — tap any to expand</p>
+        <button
+          onClick={() => setExpandAll(e => !e)}
+          className="text-xs text-secondary hover:underline"
+        >
+          {expandAll ? "Collapse all" : "Expand all"}
+        </button>
       </div>
 
       {/* ── General / Global categories ── */}
       {globalCats.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-3 w-full">
           {hasGroupCats && (
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-border/40" />
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest px-2 flex items-center gap-1.5">
-                <Layers className="w-3 h-3" /> General Categories
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest px-2 flex items-center gap-1.5 whitespace-nowrap">
+                <Layers className="w-3 h-3" /> General
               </span>
               <div className="h-px flex-1 bg-border/40" />
             </div>
           )}
           {globalCats.map((cat: any, i: number) => (
-            <CategoryResultCard key={cat.category_id} cat={cat} accentIdx={i} />
+            <CategoryResultCard
+              key={cat.category_id}
+              cat={cat}
+              accentIdx={i}
+              defaultExpanded={expandAll || i === 0}
+            />
           ))}
         </div>
       )}
 
       {/* ── Group categories ── */}
       {hasGroupCats && (
-        <div className="space-y-4">
+        <div className="space-y-3 w-full">
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-border/40" />
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest px-2 flex items-center gap-1.5">
-              <Users className="w-3 h-3" /> Group Categories
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest px-2 flex items-center gap-1.5 whitespace-nowrap">
+              <Users className="w-3 h-3" /> By Group
             </span>
             <div className="h-px flex-1 bg-border/40" />
           </div>
 
-          {/* Group tab selector */}
           {groups.length > 1 && (
-            <div className="flex gap-1 p-1 bg-muted rounded-xl overflow-x-auto">
-              {groups.map((g) => (
-                <button key={g.id} onClick={() => setGroupTab(g.id)}
-                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-all whitespace-nowrap min-w-fit ${
-                    groupTab === g.id ? "bg-card text-foreground shadow-sm border border-border/40" : "text-muted-foreground hover:text-foreground"
-                  }`}>
-                  {g.name}
-                </button>
-              ))}
+            <div className="w-full overflow-x-auto pb-1">
+              <div className="flex gap-1 p-1 bg-muted rounded-xl w-max min-w-full">
+                {groups.map((g) => (
+                  <button key={g.id} onClick={() => setGroupTab(g.id)}
+                    className={`py-2 px-3 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                      groupTab === g.id
+                        ? "bg-card text-foreground shadow-sm border border-border/40"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}>
+                    {g.name}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* Show group categories filtered by selected group */}
           {groupCats
             .filter((cat: any) => groups.length <= 1 || (cat.group_ids || []).includes(groupTab))
             .map((cat: any, i: number) => (
-              <CategoryResultCard key={`${cat.category_id}-${groupTab}`} cat={cat} accentIdx={globalCats.length + i} />
+              <CategoryResultCard
+                key={`${cat.category_id}-${groupTab}`}
+                cat={cat}
+                accentIdx={globalCats.length + i}
+                defaultExpanded={expandAll}
+              />
             ))
           }
         </div>
@@ -794,6 +906,7 @@ function ResultsView({ results, isOrg }: { results: any[]; isOrg: boolean }) {
     </div>
   );
 }
+
 
 // ── Election Dashboard ────────────────────────────────────────────────────────
 function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any }) {
@@ -1198,9 +1311,26 @@ export default function OfficialDashboard() {
       const data = await officialsApi.getDashboard();
       setProfile(data);
       setDashData(data);
-    } catch {
-      toast({ title: "Session expired. Please log in again.", variant: "destructive" });
-      handleLogout();
+    } catch (e: any) {
+      const msg = e?.message || "";
+      // Only redirect to login on genuine auth failures, not server errors
+      const isAuthError = msg.toLowerCase().includes("session") ||
+                          msg.toLowerCase().includes("expired") ||
+                          msg.toLowerCase().includes("sign in") ||
+                          msg.toLowerCase().includes("unauthorized") ||
+                          msg.toLowerCase().includes("401");
+      if (isAuthError) {
+        toast({ title: "Session expired. Please log in again.", variant: "destructive" });
+        handleLogout();
+      } else {
+        // Server error (500 etc.) — show the real error, don't log out
+        toast({
+          title: "Dashboard error",
+          description: msg || "Could not load dashboard. Please try refreshing.",
+          variant: "destructive",
+        });
+        setLoading(false);
+      }
     } finally { setLoading(false); }
   };
 
