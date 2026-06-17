@@ -424,84 +424,151 @@ const EventDetailPage = () => {
     }
   };
 
+  // ── FIXED: handlePaymentSuccess with duplicate prevention ──
   const handlePaymentSuccess = async (reference: string, catId: string) => {
-  lockCat(catId);
-  setPaymentStep(p => ({ ...p, [catId]: 'verifying' }));
-  const qty = getQty(catId);
-  const MAX = 20; // Increase max attempts
-  let isCompleted = false; // Flag to stop retries
-  
-  const attempt = async (n: number): Promise<void> => {
-    // Don't retry if already completed
-    if (isCompleted) return;
+    lockCat(catId);
+    setPaymentStep(p => ({ ...p, [catId]: 'verifying' }));
+    const qty = getQty(catId);
+    const MAX = 20;
+    let isCompleted = false;
     
-    try {
-      await castVote({ 
-        event_slug: slug!, 
-        category_id: catId, 
-        candidate_ids: [selectedCandidates[catId]], 
-        payment_ref: reference, 
-        quantity: qty 
-      });
+    // Helper to check if vote already cast (by webhook)
+    const checkIfAlreadyCast = async (ref: string): Promise<boolean> => {
+      try {
+        const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
+        const token = getAccessToken() || "";
+        const res = await fetch(`${API}/payments/status/${ref}/`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        });
+        const data = await res.json();
+        return data.votes_cast > 0;
+      } catch {
+        return false;
+      }
+    };
+    
+    const attempt = async (n: number): Promise<void> => {
+      // Don't retry if already completed
+      if (isCompleted) return;
       
-      // Success!
-      isCompleted = true;
-      setVotedCategories(p => [...p, catId]);
-      setPaymentStep(p => ({ ...p, [catId]: 'done' }));
-      fireConfetti();
-      refetch();
-      toast({ title: "Votes cast! 🎉" });
-      
-      setTimeout(() => { 
-        setPaymentStep(p => ({ ...p, [catId]: 'select' })); 
-        setSelectedCandidates(p => ({ ...p, [catId]: '' })); 
-        setVoteQuantity(p => ({ ...p, [catId]: 1 })); 
-        unlockCat(catId);
-        selectCategory(null);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 1500);
-      
-    } catch (e: any) {
-      const msg = e?.message || '';
-      
-      // Payment already used - means vote was cast (probably by webhook)
-      if (msg.includes('already been used')) {
+      // FIRST: Check if webhook already cast the vote
+      const alreadyCast = await checkIfAlreadyCast(reference);
+      if (alreadyCast) {
+        console.log('Vote already cast by webhook, showing success');
         isCompleted = true;
         setVotedCategories(p => [...p, catId]);
         setPaymentStep(p => ({ ...p, [catId]: 'done' }));
         fireConfetti();
         refetch();
-        toast({ title: "Vote confirmed! 🎉", description: "Your vote has been recorded." });
+        toast({ 
+          title: "Vote confirmed! 🎉", 
+          description: "Your vote has been recorded successfully." 
+        });
         setTimeout(() => { 
           setPaymentStep(p => ({ ...p, [catId]: 'select' })); 
           setSelectedCandidates(p => ({ ...p, [catId]: '' })); 
           setVoteQuantity(p => ({ ...p, [catId]: 1 })); 
           unlockCat(catId);
           selectCategory(null);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         }, 1500);
         return;
       }
       
-      // Retry logic
-      if (n < MAX && !isCompleted) {
-        toast({ 
-          title: `Confirming your vote (${n}/${MAX})`, 
-          description: "Your payment was received — we're recording your vote.",
-          duration: 2000
+      try {
+        await castVote({ 
+          event_slug: slug!, 
+          category_id: catId, 
+          candidate_ids: [selectedCandidates[catId]], 
+          payment_ref: reference, 
+          quantity: qty 
         });
-        await new Promise(r => setTimeout(r, n * 2000));
-        return attempt(n + 1);
+        
+        // Success!
+        isCompleted = true;
+        setVotedCategories(p => [...p, catId]);
+        setPaymentStep(p => ({ ...p, [catId]: 'done' }));
+        fireConfetti();
+        refetch();
+        toast({ 
+          title: "Votes cast! 🎉", 
+          description: `${qty} vote(s) recorded.` 
+        });
+        
+        setTimeout(() => { 
+          setPaymentStep(p => ({ ...p, [catId]: 'select' })); 
+          setSelectedCandidates(p => ({ ...p, [catId]: '' })); 
+          setVoteQuantity(p => ({ ...p, [catId]: 1 })); 
+          unlockCat(catId);
+          selectCategory(null);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 1500);
+        
+      } catch (e: any) {
+        const msg = e?.message || '';
+        
+        // ── CRITICAL FIX: Stop retrying on "already used" ──
+        // This prevents duplicate votes when webhook already cast
+        if (msg.includes('already been used')) {
+          console.log('Vote already cast (webhook) - confirming success');
+          isCompleted = true;
+          setVotedCategories(p => [...p, catId]);
+          setPaymentStep(p => ({ ...p, [catId]: 'done' }));
+          fireConfetti();
+          refetch();
+          toast({ 
+            title: "Vote confirmed! 🎉", 
+            description: "Your vote has been recorded." 
+          });
+          setTimeout(() => { 
+            setPaymentStep(p => ({ ...p, [catId]: 'select' })); 
+            setSelectedCandidates(p => ({ ...p, [catId]: '' })); 
+            setVoteQuantity(p => ({ ...p, [catId]: 1 })); 
+            unlockCat(catId);
+            selectCategory(null);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }, 1500);
+          return;
+        }
+        
+        // Retry logic - only for network/other errors, not "already used"
+        if (n < MAX && !isCompleted && !msg.includes('already been used')) {
+          toast({ 
+            title: `Confirming your vote (${n}/${MAX})`, 
+            description: "Your payment was received — we're recording your vote.",
+            duration: 2000
+          });
+          await new Promise(r => setTimeout(r, n * 2000));
+          return attempt(n + 1);
+        }
+        
+        // All retries exhausted (and not "already used")
+        if (!isCompleted) {
+          const failed = JSON.parse(localStorage.getItem('failed_votes') || '[]');
+          failed.push({
+            reference,
+            event_slug: slug,
+            category_id: catId,
+            candidate_id: selectedCandidates[catId],
+            quantity: qty,
+            timestamp: new Date().toISOString()
+          });
+          localStorage.setItem('failed_votes', JSON.stringify(failed));
+          setPaymentStep(p => ({ ...p, [catId]: 'select' }));
+          unlockCat(catId);
+          toast({
+            title: "Payment received but vote not confirmed",
+            description: `Reference: ${reference}. Please contact support.`,
+            variant: "destructive",
+            duration: 10000
+          });
+        }
       }
-      
-      // Only show manual retry if not completed
-      if (!isCompleted) {
-        // ... manual retry dialog
-      }
-    }
+    };
+    
+    await attempt(1);
   };
-  
-  await attempt(1);
-};
+
   const handleShare = () => { navigator.clipboard.writeText(window.location.href); toast({ title: "Link copied! 🔗" }); };
   const getTimeLeft = (t: string) => {
     if (!t) return null;
