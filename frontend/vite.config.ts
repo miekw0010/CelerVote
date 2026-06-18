@@ -24,6 +24,15 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
+    // Add rollupOptions to control output file naming
+    rollupOptions: {
+      output: {
+        // Add content hash to entry and chunk files for cache busting
+        entryFileNames: `assets/[name].[hash].js`,
+        chunkFileNames: `assets/[name].[hash].js`,
+        assetFileNames: `assets/[name].[hash].[ext]`
+      }
+    },
     minify: 'terser',
     terserOptions: {
       compress: {
