@@ -96,11 +96,20 @@ class VoteCaster:
             # the count. Confirmed in production: two refs got exactly 2x
             # votes (20 paid -> 40 cast) with an unbroken write sequence,
             # proving two concurrent transactions interleaved at the DB level.
+            #
+            # GAP CLOSED: if no Payment row exists yet (race between payment
+            # creation and an early cast_vote call), select_for_update() has
+            # nothing to lock and DoesNotExist is raised. In that specific
+            # case we fall back to a Postgres advisory lock keyed on the
+            # payment_ref string itself — this works even with zero rows,
+            # closing the same race for that edge case too.
             from apps.payments.models import Payment as PaymentModel
+            from django.db import connection
             try:
                 PaymentModel.objects.select_for_update().get(reference=payment_ref)
             except PaymentModel.DoesNotExist:
-                pass  # No Payment record yet — fall through to checks below
+                with connection.cursor() as cur:
+                    cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", [payment_ref])
 
             # Block reuse of the same reference (now safe — the lock above
             # guarantees only one caller reaches this check at a time per ref)

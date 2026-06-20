@@ -461,45 +461,29 @@ class RecoverVoteView(APIView):
         price_kobo = int(float(event.price_per_vote) * 100)
         quantity   = max(1, paid_kobo // price_kobo) if price_kobo > 0 else 1
 
-        # Get or create session
+        # Get or create a User account for the voter so cast_vote() can attach it
         from django.contrib.auth import get_user_model
         User   = get_user_model()
         voter  = User.objects.filter(email=voter_email).first()
-        session, _ = VoteSession.objects.get_or_create(
-            event=event,
-            voter=voter,
-            defaults={
-                'voter_email': voter_email,
-                'ip_address':  '0.0.0.0',
-                'voter_name':  voter.name if voter else voter_email,
-            }
+
+        # ── FIX: route through VoteCaster.cast_vote() instead of writing
+        # Vote rows directly. This view previously duplicated all the vote-
+        # writing logic with NO lock and NO atomic transaction — meaning an
+        # admin clicking "Recover" at the same moment the webhook also fired
+        # for the same ref could create duplicate votes, completely bypassing
+        # the select_for_update() race-condition fix in cast_vote(). Using
+        # cast_vote() here means every vote-write path now shares the exact
+        # same locking, idempotency, and fraud-bypass-for-paid-votes logic.
+        caster = VoteCaster(event=event, voter=voter, request=None, ip='0.0.0.0')
+        result = caster.cast_vote(
+            category_id=str(category.id),
+            candidate_ids=[str(candidate.id)],
+            payment_ref=reference,
+            quantity=quantity,
         )
 
-        # Cast votes
-        for q in range(quantity):
-            Vote.objects.create(
-                session=session,
-                event=event,
-                category=category,
-                candidate=candidate,
-                payment_ref=reference,
-                is_paid=True,
-                ip_address='0.0.0.0',
-                encrypted_data=encrypt_vote_data({
-                    'event_id':        str(event.id),
-                    'category_id':     str(category.id),
-                    'candidate_id':    str(candidate.id),
-                    'voter_id':        str(voter.id) if voter else None,
-                    'timestamp':       timezone.now().isoformat(),
-                    'manual_recovery': True,
-                    'recovered_by':    str(request.user.email),
-                })
-            )
-
-        Candidate.objects.filter(id=candidate.id).update(vote_count=F('vote_count') + quantity)
-        Event.objects.filter(id=event.id).update(total_votes=F('total_votes') + quantity)
-        session.votes_cast += quantity
-        session.save(update_fields=['votes_cast'])
+        if not result.get('success'):
+            return Response({'error': result.get('error', 'Recovery failed.')}, status=400)
 
         from django.core.cache import cache
         cache.delete(f'live_results:{event.id}')
