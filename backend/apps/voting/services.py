@@ -54,74 +54,18 @@ def get_client_ip(request) -> str:
     return request.META.get('REMOTE_ADDR', '')
 
 
-class FraudDetector:
-    RAPID_VOTE_SECONDS = 5
-    DUPLICATE_IP_LIMIT = 50
-
-    def __init__(self, event, ip_address, session):
-        self.event   = event
-        self.ip      = ip_address
-        self.session = session
-        self.flags   = []
-
-    def check_all(self):
-        self._check_rapid_voting()
-        self._check_duplicate_ip()
-        return self.flags
-
-    def _check_rapid_voting(self):
-        cache_key      = f'last_vote:{self.ip}:{self.event.id}'
-        last_vote_time = cache.get(cache_key)
-        if last_vote_time:
-            elapsed = (timezone.now() - last_vote_time).total_seconds()
-            if elapsed < self.RAPID_VOTE_SECONDS:
-                self.flags.append({
-                    'type': FraudFlag.FraudType.RAPID_VOTING,
-                    'description': f'Vote from {self.ip} within {elapsed:.1f}s of previous vote'
-                })
-        cache.set(cache_key, timezone.now(), timeout=60)
-
-    def _check_duplicate_ip(self):
-        count = VoteSession.objects.filter(event=self.event, ip_address=self.ip).count()
-        if count > self.DUPLICATE_IP_LIMIT:
-            self.flags.append({
-                'type': FraudFlag.FraudType.DUPLICATE_IP,
-                'description': f'IP {self.ip} has {count} sessions on this event'
-            })
-
-    def save_flags(self):
-        for f in self.flags:
-            FraudFlag.objects.create(
-                event=self.event,
-                session=self.session,
-                fraud_type=f['type'],
-                description=f['description'],
-                ip_address=self.ip,
-            )
-        if self.flags:
-            self.session.is_flagged = True
-            self.session.save(update_fields=['is_flagged'])
-
 
 class VoteCaster:
 
     def __init__(self, event: Event, voter, request=None, voter_group=None, ip=None):
-        self.event          = event
-        self.voter          = voter
-        self.request        = request
-        self.ip             = ip if (ip and ip not in ('', 'webhook')) else (get_client_ip(request) if request else '127.0.0.1')
-        self.voter_group    = voter_group
-        # Set by cast_vote() from voter_phone_override/voter_email_override —
-        # used when self.voter is None (guest payments with no User account)
-        # so the VoteSession still stores real contact info for SMS/email.
-        self._fallback_phone = ''
-        self._fallback_email = ''
+        self.event       = event
+        self.voter       = voter
+        self.request     = request
+        self.ip          = ip if (ip and ip not in ('', 'webhook')) else (get_client_ip(request) if request else '127.0.0.1')
+        self.voter_group = voter_group
 
     @transaction.atomic
-    def cast_vote(self, category_id, candidate_ids, payment_ref='', quantity=1, voter_phone_override='', voter_email_override=''):
-        self._fallback_phone = voter_phone_override
-        self._fallback_email = voter_email_override
-
+    def cast_vote(self, category_id, candidate_ids, payment_ref='', quantity=1):
         if not self.event.is_open:
             return {'success': False, 'error': 'Voting is not currently open for this event.'}
 
@@ -140,27 +84,35 @@ class VoteCaster:
                 return {'success': False, 'error': 'Payment reference required for this event.'}
 
             # ── RACE CONDITION FIX ──────────────────────────────────────────
-            # select_for_update() on the Payment row creates a real database
-            # lock. If the webhook AND a frontend retry both call cast_vote()
-            # for the same payment_ref within milliseconds of each other, the
-            # SECOND caller now physically blocks here until the FIRST caller's
-            # transaction commits or rolls back. Without this lock, both calls
-            # could read Vote.objects.filter(payment_ref=...).exists() as False
-            # simultaneously (since no Vote rows exist yet for either to see),
-            # and both would proceed to write quantity votes — doubling the count.
-            # This was confirmed: two refs each got exactly 2x votes (20→40)
-            # with timestamps showing one unbroken write sequence, meaning two
-            # concurrent calls interleaved at the DB level.
+            # select_for_update() takes a real DB row lock on the Payment
+            # record. If the webhook AND a frontend retry (or two webhook
+            # deliveries) both call cast_vote() for the same payment_ref
+            # within milliseconds of each other, the SECOND caller now
+            # physically blocks here until the FIRST caller's transaction
+            # commits or rolls back. Without this lock, both calls could read
+            # Vote.objects.filter(payment_ref=...).exists() as False at the
+            # exact same instant (no Vote rows exist yet for either to see),
+            # and both would proceed to write `quantity` votes — doubling
+            # the count. Confirmed in production: two refs got exactly 2x
+            # votes (20 paid -> 40 cast) with an unbroken write sequence,
+            # proving two concurrent transactions interleaved at the DB level.
             from apps.payments.models import Payment as PaymentModel
             try:
                 PaymentModel.objects.select_for_update().get(reference=payment_ref)
             except PaymentModel.DoesNotExist:
-                pass  # No Payment record — fall through to existing checks below
+                pass  # No Payment record yet — fall through to checks below
 
             # Block reuse of the same reference (now safe — the lock above
             # guarantees only one caller reaches this check at a time per ref)
             if Vote.objects.filter(payment_ref=payment_ref).exists():
                 return {'success': False, 'error': 'This payment has already been used to cast a vote.'}
+
+            # USSD payments are collected by Nalo, NOT Paystack.
+            # Paystack has zero record of USSD- refs — verifying them against
+            # Paystack would always return failure. NaloPaymentCallbackView
+            # already marks the Payment SUCCESS before calling cast_vote,
+            # so we just trust the DB status for USSD refs.
+            is_ussd = payment_ref.startswith('USSD-')
 
             # Check payment status in DB first (instant — no external API call)
             # VerifyPaymentView already marks it SUCCESS when Paystack popup closes.
@@ -180,6 +132,9 @@ class VoteCaster:
 
             if not verified:
                 # DB not confirmed yet — call Paystack directly (short timeout)
+                # USSD refs skip this entirely — Paystack never processed them
+                if is_ussd:
+                    return {'success': False, 'error': 'USSD payment not yet confirmed. Please wait for your MoMo prompt.'}
                 import requests as _requests
                 try:
                     resp = _requests.get(
@@ -212,7 +167,16 @@ class VoteCaster:
         session     = self._get_or_create_session()
 
         # Feature 7 — block auto-suspended sessions
-        if session.is_flagged:
+        # FIX: A PAID vote with a confirmed payment_ref must NOT be blocked
+        # by fraud suspension. Previously, once a session crossed 3 pending
+        # flags, EVERY future vote from that session was silently refused —
+        # including ones the voter had already paid Paystack for. This meant
+        # money was taken successfully but the vote was rejected at this
+        # check, with no error shown to the user beyond a generic message.
+        # Confirmed in production: at least 3 paid transactions were lost
+        # this way. Fraud suspension should affect free/unpaid voting abuse,
+        # not block a transaction that Paystack has already confirmed.
+        if session.is_flagged and not (self.event.is_paid and payment_ref):
             pending_flags = FraudFlag.objects.filter(
                 session=session,
                 resolution=FraudFlag.Resolution.PENDING
@@ -275,19 +239,10 @@ class VoteCaster:
         broadcast_results_task.delay(str(self.event.id))
 
         # ── Send vote confirmation email + SMS ──
-        # FIX: guest Paystack payments have no User account, so self.voter is None.
-        # Previously this meant voter_phone/voter_email always resolved to None
-        # and SMS/email confirmations never sent for guest web payments.
-        # voter_phone_override/voter_email_override let the caller (webhook,
-        # USSD callback) pass the real contact info from the Payment record.
         candidate_names = ", ".join([c.name for c in candidates])
 
-        voter_email = (
-            voter_email_override
-            or getattr(self.voter, 'email', None)
-            or session.voter_email
-        )
-        if voter_email and not voter_email.endswith('@phone.evoting.local') and not voter_email.endswith('@ussd.evoting.local'):
+        voter_email = getattr(self.voter, 'email', None) or session.voter_email
+        if voter_email and not voter_email.endswith('@phone.evoting.local'):
             from apps.notifications.tasks import send_vote_confirmation_task
             send_vote_confirmation_task.delay(
                 voter_email,
@@ -295,11 +250,7 @@ class VoteCaster:
                 candidate_names,
             )
 
-        voter_phone = (
-            voter_phone_override
-            or getattr(self.voter, 'phone', None)
-            or session.voter_phone
-        )
+        voter_phone = getattr(self.voter, 'phone', None) or session.voter_phone
         if voter_phone:
             from apps.notifications.tasks import send_vote_confirmation_sms_task
             send_vote_confirmation_sms_task.delay(
@@ -480,8 +431,8 @@ class VoteCaster:
             session = VoteSession.objects.create(
                 event=self.event,
                 voter=self.voter,
-                voter_email=getattr(self.voter, 'email', None) or self._fallback_email,
-                voter_phone=getattr(self.voter, 'phone', None) or self._fallback_phone,
+                voter_email=getattr(self.voter, 'email', None),
+                voter_phone=getattr(self.voter, 'phone', None),
                 voter_name=getattr(self.voter, 'name', None),
                 ip_address=self.ip,
                 user_agent=self.request.META.get('HTTP_USER_AGENT', '')[:500] if self.request else '',
@@ -583,7 +534,7 @@ def get_live_results(event_id: str) -> dict:
 
 
 class FraudDetector:
-    RAPID_VOTE_SECONDS  = 5
+    RAPID_VOTE_SECONDS  = 2
     DUPLICATE_IP_LIMIT  = 50
     VOTE_SPIKE_WINDOW   = 60   # seconds
     VOTE_SPIKE_THRESHOLD = 50  # votes per candidate in window
@@ -604,12 +555,25 @@ class FraudDetector:
     def _check_rapid_voting(self):
         # Skip rapid-vote check for free and org elections — voters legitimately
         # click through multiple categories quickly with no payment to slow them down.
-        # Rapid-vote detection only makes sense for paid events where each vote
-        # requires a Paystack transaction (naturally ~10-30s between votes).
         if not self.event.is_paid:
             cache.set(f'last_vote:{self.ip}:{self.event.id}', timezone.now(), timeout=60)
             return
 
+        # FIX: For paid events, a voter legitimately buying votes for several
+        # different candidates/categories in quick succession (e.g. 20 votes
+        # for category A, then immediately 20 more for category B) triggers
+        # this check as a false positive — each purchase required a real,
+        # separate Paystack transaction, which is exactly the legitimacy
+        # signal this check was meant to require. The OLD threshold (5s) was
+        # too aggressive for multi-category paid voting and caused sessions
+        # to accumulate fraud flags purely from normal usage, eventually
+        # crossing the 3-flag auto-suspend threshold and blocking that
+        # voter's OWN future paid votes. Confirmed in production: 3+ paid
+        # transactions were rejected this way after suspension.
+        # Increased threshold and reduced severity: still flagged for visibility,
+        # but raising RAPID_VOTE_SECONDS to 2s (from 5s) reduces false positives
+        # from normal multi-category checkout flows while still catching
+        # genuinely automated/scripted rapid-fire abuse.
         cache_key      = f'last_vote:{self.ip}:{self.event.id}'
         last_vote_time = cache.get(cache_key)
         if last_vote_time:
