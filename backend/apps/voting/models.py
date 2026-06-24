@@ -73,6 +73,8 @@ class FraudFlag(models.Model):
         DUPLICATE_DEVICE = 'duplicate_device', 'Duplicate Device'
         RAPID_VOTING     = 'rapid_voting',     'Rapid Voting'
         PAYMENT_ANOMALY  = 'payment_anomaly',  'Payment Anomaly'
+        GEO_ANOMALY      = 'geo_anomaly',      'Geographic Anomaly'
+        VOTE_SPIKE       = 'vote_spike',       'Vote Spike Detected'
         MANUAL           = 'manual',           'Manually Flagged'
 
     class Resolution(models.TextChoices):
@@ -146,11 +148,9 @@ class VoterGeoLog(models.Model):
         db_table = 'voter_geo_logs'
         ordering = ['-created_at']
 
-class FraudType(models.TextChoices):
-        DUPLICATE_IP     = 'duplicate_ip',     'Duplicate IP'
-        DUPLICATE_DEVICE = 'duplicate_device', 'Duplicate Device'
-        RAPID_VOTING     = 'rapid_voting',     'Rapid Voting'
-        PAYMENT_ANOMALY  = 'payment_anomaly',  'Payment Anomaly'
-        GEO_ANOMALY      = 'geo_anomaly',      'Geographic Anomaly'
-        VOTE_SPIKE       = 'vote_spike',       'Vote Spike Detected'
-        MANUAL           = 'manual',           'Manually Flagged'
+# Note: fraud types now live exclusively on FraudFlag.FraudType (above).
+# A duplicate standalone FraudType class used to exist here and caused a
+# production bug — services.py referenced FraudFlag.FraudType.VOTE_SPIKE,
+# which didn't exist on the nested class (only on this now-removed
+# duplicate), silently crashing every USSD paid vote cast with:
+#   AttributeError: type object 'FraudType' has no attribute 'VOTE_SPIKE'
