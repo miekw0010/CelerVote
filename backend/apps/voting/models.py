@@ -61,6 +61,7 @@ class Vote(models.Model):
             models.Index(fields=['event', 'category']),
             models.Index(fields=['candidate']),
             models.Index(fields=['session']),
+            models.Index(fields=['payment_ref'], name='votes_payment_ref_idx'),
         ]
 
     def __str__(self):
