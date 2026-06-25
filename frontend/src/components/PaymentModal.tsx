@@ -2,10 +2,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { getAccessToken } from "../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
-declare const PaystackPop: any;
 import {
   X, Shield, CreditCard, Smartphone, Lock,
-  CheckCircle2, Loader2, ChevronRight, AlertCircle
+  CheckCircle2, Loader2, ChevronRight, AlertCircle, ExternalLink
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -26,19 +25,20 @@ interface PaymentModalProps {
   onGuestPhoneChange?: (phone: string) => void;
 }
 const TEAL = "#01003c";
-const PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "";
 
 export function PaymentModal({
   open, onClose, onSuccess,
   eventTitle, eventSlug, categoryId, candidateId, candidateName, quantity,
   pricePerVote, currency, email, guestPhone = "", onGuestPhoneChange,
 }: PaymentModalProps) {
-  const [step, setStep]       = useState<"review" | "processing" | "success" | "failed">("review");
+  const [step, setStep]       = useState<"review" | "redirecting" | "processing" | "success" | "failed">("review");
   const [errMsg, setErrMsg]   = useState("");
+  const [checkoutUrl, setCheckoutUrl] = useState("");
   const [localPhone, setLocalPhone] = useState("");
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const verifiedRef = useRef(false);
   const currentReferenceRef = useRef<string>("");
+  const checkoutWindowRef = useRef<Window | null>(null);
 
   const isGuestRef = useRef(!email || email === "voter@celervote.com" || email === "");
   const isGuest = isGuestRef.current;
@@ -63,8 +63,10 @@ export function PaymentModal({
       setStep("review");
       setErrMsg("");
       setLocalPhone("");
+      setCheckoutUrl("");
       verifiedRef.current = false;
       currentReferenceRef.current = "";
+      checkoutWindowRef.current = null;
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
@@ -159,6 +161,14 @@ export function PaymentModal({
       setStep("failed");
       return;
     }
+
+    // Open a blank tab SYNCHRONOUSLY (inside the click handler) so the
+    // browser treats it as user-initiated and doesn't block it. We point
+    // it at the real checkout_url once the backend call below resolves.
+    const popup = window.open("", "_blank");
+    checkoutWindowRef.current = popup;
+    const popupBlocked = !popup || popup.closed || typeof popup.closed === "undefined";
+
     setStep("processing");
 
     try {
@@ -188,90 +198,58 @@ export function PaymentModal({
 
       const data = await res.json();
       const reference = data.reference;
+      const url = data.checkout_url;
       currentReferenceRef.current = reference;
       verifiedRef.current = false;
 
-      // ── Wait for Paystack V2 library to be ready (max 10 seconds) ──────────
-      // The script tag in index.html loads it but CDN can be slow on mobile.
-      // We wait here (AFTER the backend call succeeded) so the user isn't
-      // blocked before we even know if payment init worked.
-      const getPaystackConstructor = (): any => {
-        // Paystack V2 inline.js exposes either window.Paystack or window.PaystackPop
-        if (typeof (window as any).Paystack !== "undefined") return (window as any).Paystack;
-        if (typeof (window as any).PaystackPop !== "undefined") return (window as any).PaystackPop;
-        return null;
-      };
+      if (!url) {
+        throw new Error("Payment provider did not return a checkout link.");
+      }
+      setCheckoutUrl(url);
 
-      let PaystackConstructor = getPaystackConstructor();
-      if (!PaystackConstructor) {
-        // Not loaded yet — poll every 500ms for up to 10 seconds
-        await new Promise<void>((resolve, reject) => {
-          let waited = 0;
-          const interval = setInterval(() => {
-            PaystackConstructor = getPaystackConstructor();
-            if (PaystackConstructor) { clearInterval(interval); resolve(); return; }
-            waited += 500;
-            if (waited >= 10000) {
-              clearInterval(interval);
-              reject(new Error("Payment library failed to load. Please refresh the page and try again."));
-            }
-          }, 500);
-        });
+      if (popupBlocked) {
+        // Couldn't open a tab automatically — show a manual "Open payment page"
+        // button instead of silently failing.
+        setStep("redirecting");
+      } else {
+        popup!.location.href = url;
+        setStep("processing");
       }
 
-      // ── Open the EXISTING backend transaction via accessCode ──────────────
-      // Using key+email+amount creates a NEW transaction with a different
-      // reference — webhook fires for EVOTE-xxx but castVote sends T8675309.
-      // accessCode opens the transaction the backend already created.
-      const paystackInstance = new PaystackConstructor();
-      paystackInstance.newTransaction({
-        accessCode: data.access_code,
-
-        onSuccess: (transaction: any) => {
-          console.log("Paystack onSuccess:", transaction.reference);
-          verifiedRef.current = true;
-          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-          setStep("success");
-          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
-          setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
-          setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.8 }, colors: ["#01003c", "#C9A84C"] }), 500);
-          // Use backend reference — transaction.reference is the same when accessCode is used
-          setTimeout(() => { onSuccess(reference); }, 1800);
-        },
-
-        onCancel: () => {
-          console.log("Paystack cancelled");
-          if (!verifiedRef.current) {
-            if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-            setStep("review");
-          }
-        },
-
-        onError: (error: any) => {
-          console.error("Paystack error:", error);
-          if (!verifiedRef.current) {
-            if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
-            setErrMsg(error.message || "Payment failed to load");
-            setStep("failed");
-          }
-        },
-      });
-
-      // Poll /payments/status/ every 5 s as a safety net:
-      // If onSuccess fires before castVote() completes (MoMo delay),
-      // polling detects votes_cast > 0 and shows success automatically.
+      // Poll /payments/status/ every 5 s — this is the source of truth for
+      // success, since the checkout tab is a separate browser context and
+      // we can't read its contents (cross-origin) to know what happened
+      // inside it. If the webhook lands, polling picks it up.
       startPolling(reference);
 
+      // Secondary signal: if the user closes the checkout tab themselves
+      // without polling having confirmed success yet, don't assume failure —
+      // MoMo confirmation can land a few seconds after the tab closes. Just
+      // keep polling; the MAX_POLLS timeout in startPolling is the backstop.
+
     } catch (err: any) {
+      if (checkoutWindowRef.current && !checkoutWindowRef.current.closed) {
+        checkoutWindowRef.current.close();
+      }
       if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
       setErrMsg(err.message || "Payment initialization failed.");
       setStep("failed");
     }
   };
 
+  const openCheckoutManually = () => {
+    if (!checkoutUrl) return;
+    const popup = window.open(checkoutUrl, "_blank");
+    checkoutWindowRef.current = popup;
+    setStep("processing");
+  };
+
   const handleClose = () => {
     if (step === "processing") return;
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+    if (checkoutWindowRef.current && !checkoutWindowRef.current.closed) {
+      checkoutWindowRef.current.close();
+    }
     setStep("review");
     setErrMsg("");
     onClose();
@@ -424,9 +402,31 @@ export function PaymentModal({
                       </div>
                       <div className="flex items-center gap-1">
                         <Lock className="w-3 h-3 text-[#94a3b8]" />
-                        <span className="text-[10px] text-[#64748b]">Powered by Paystack</span>
+                        <span className="text-[10px] text-[#64748b]">Powered by Nalo</span>
                       </div>
                     </div>
+                  </motion.div>
+                )}
+
+                {/* ── Redirecting (popup was blocked, need manual click) ── */}
+                {step === "redirecting" && (
+                  <motion.div key="redirecting"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="p-8 flex flex-col items-center justify-center gap-4 min-h-[200px]">
+                    <div className="w-16 h-16 rounded-full bg-[#C9A84C]/10 border border-[#C9A84C]/20 flex items-center justify-center">
+                      <ExternalLink className="w-8 h-8 text-[#C9A84C]" />
+                    </div>
+                    <div className="text-center space-y-2">
+                      <p className="font-semibold text-white">Your browser blocked the payment popup</p>
+                      <p className="text-xs text-[#94a3b8]">
+                        Tap below to open the secure payment page in a new tab.
+                      </p>
+                    </div>
+                    <Button onClick={openCheckoutManually} size="sm" className="gap-2">
+                      <ExternalLink className="w-4 h-4" />
+                      Open Payment Page
+                    </Button>
                   </motion.div>
                 )}
 
@@ -440,13 +440,22 @@ export function PaymentModal({
                       <Loader2 className="w-8 h-8 text-[#C9A84C] animate-spin" />
                     </div>
                     <div className="text-center space-y-2">
-                      <p className="font-semibold text-white">Waiting for payment</p>
+                      <p className="font-semibold text-white">Complete payment in the new tab</p>
                       <p className="text-xs text-[#94a3b8]">
                         📱 <strong>Mobile Money users:</strong> check your phone for a PIN prompt and approve it.
                       </p>
                       <p className="text-xs text-[#64748b]">
-                        Mobile Money can take up to 3 minutes. Do not close this window.
+                        We opened the secure payment page in a new tab. Once you finish there,
+                        come back here — this window will update automatically.
                       </p>
+                      {checkoutUrl && (
+                        <button
+                          onClick={openCheckoutManually}
+                          className="text-[11px] text-[#C9A84C] underline underline-offset-2 hover:text-[#e0c068]"
+                        >
+                          Didn't see the tab open? Click here
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 )}

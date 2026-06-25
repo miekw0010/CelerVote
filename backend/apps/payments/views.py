@@ -1,18 +1,21 @@
 import uuid
 import json
+import logging
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django_ratelimit.decorators import ratelimit
 
 from apps.events.models import Event
-from .models import Payment, PaystackService
+from .models import Payment, NaloCheckoutService
 from .serializers import InitializePaymentSerializer, PaymentSerializer
 
-paystack = PaystackService()
+logger = logging.getLogger(__name__)
+nalo_checkout = NaloCheckoutService()
 
 
 class InitializePaymentView(APIView):
@@ -41,7 +44,7 @@ class InitializePaymentView(APIView):
         category_id  = data.get('category_id')
         candidate_id = data.get('candidate_id')
 
-        # Phone-only users have a fake local email — replace with a Paystack-friendly dummy
+        # Phone-only users have a fake local email — replace with a clean dummy
         if email and (email.endswith('@phone.evoting.local') or email.endswith('@ussd.evoting.local')):
             phone_clean = phone.replace('+', '').replace(' ', '') if phone else ''
             email = f'{phone_clean}@celervote.com' if phone_clean else ''
@@ -67,30 +70,39 @@ class InitializePaymentView(APIView):
             candidate_id=candidate_id,
         )
 
-        result = paystack.initialize_transaction(
-            email=email,
-            amount_ghs=amount,
+        # Build absolute callback URL for Nalo's webhook (must be publicly reachable)
+        backend_url = getattr(settings, 'BACKEND_URL', '') or request.build_absolute_uri('/').rstrip('/')
+        callback_url = f'{backend_url}/api/v1/payments/webhook/nalo-checkout/'
+        referral_url = data.get('callback_url') or request.build_absolute_uri('/')
+
+        customer_name = (
+            getattr(request.user, 'get_full_name', lambda: '')() if request.user.is_authenticated else ''
+        ) or 'Voter'
+
+        result = nalo_checkout.create_checkout_session(
+            order_id=reference,
             reference=reference,
-            metadata={
-                'event_id':    str(event.id),
-                'event_title': event.title,
-                'votes_count': votes_count,
-                'payment_id':  str(payment.id),
-            },
-            callback_url=data.get('callback_url', ''),
+            amount_ghs=amount,
+            customer_name=customer_name,
+            referral_url=referral_url,
+            callback_url=callback_url,
+            products=[{
+                'name':  f'{votes_count} vote(s) for {event.title}'[:120],
+                'count': votes_count,
+                'price': f'{float(event.price_per_vote):.2f}',
+            }],
         )
 
-        if not result.get('status'):
+        if not result.get('success'):
             payment.status = Payment.Status.FAILED
             payment.save(update_fields=['status'])
-            return Response({'error': result.get('message', 'Payment initialization failed.')}, status=400)
+            return Response({'error': result.get('error', 'Payment initialization failed.')}, status=400)
 
         return Response({
-            'reference':   reference,
-            'payment_url': result['data']['authorization_url'],
-            'access_code': result['data']['access_code'],
-            'amount':      amount,
-            'currency':    event.currency,
+            'reference':    reference,
+            'checkout_url': result['checkout_url'],
+            'amount':       amount,
+            'currency':     event.currency,
         })
 
 
@@ -108,30 +120,24 @@ class VerifyPaymentView(APIView):
                 'message':      'Payment already verified.',
             })
 
-        result = paystack.verify_transaction(reference)
+        # Fallback: ask Nalo directly in case the webhook hasn't landed yet
+        result = nalo_checkout.check_status(order_id=reference)
 
-        if result.get('status') and result['data']['status'] == 'success':
-            payment.status        = Payment.Status.SUCCESS
-            payment.paystack_id   = str(result['data']['id'])
-            payment.channel       = result['data'].get('channel', '')
-            payment.paystack_data = result['data']
-            payment.save()
+        if result.get('success') and result.get('status') == 'COMPLETED':
+            payment.status = Payment.Status.SUCCESS
+            payment.save(update_fields=['status'])
             return Response({
                 'status':       'success',
                 'reference':    reference,
                 'votes_bought': payment.votes_bought,
                 'message':      f'Payment successful! You can now cast {payment.votes_bought} vote(s).',
             })
-        else:
-            # FIX: Do NOT write FAILED here. Paystack may still be settling
-            # (MoMo takes 1-3 min). Writing FAILED corrupts the Payment record
-            # before the webhook arrives and marks it SUCCESS.
-            tx_status = result.get('data', {}).get('status', 'unknown') if result.get('data') else 'unknown'
-            return Response({
-                'status':          'pending',
-                'paystack_status': tx_status,
-                'message':         'Payment not yet confirmed. Please wait — your vote will be recorded automatically.',
-            }, status=200)
+
+        return Response({
+            'status':      'pending',
+            'nalo_status': result.get('status', 'unknown'),
+            'message':     'Payment not yet confirmed. Please wait — your vote will be recorded automatically.',
+        }, status=200)
 
 
 class PaymentStatusView(APIView):
@@ -146,8 +152,6 @@ class PaymentStatusView(APIView):
 
     def get(self, request, reference):
         from apps.voting.models import Vote
-        import logging
-        logger = logging.getLogger(__name__)
 
         try:
             payment = Payment.objects.get(reference=reference)
@@ -174,81 +178,84 @@ class PaymentStatusView(APIView):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class PaystackWebhookView(APIView):
+class NaloCheckoutWebhookView(APIView):
+    """
+    Handles Nalo Hosted Checkout callbacks. Payload shape (per NALOPAY docs)
+    is DIFFERENT from the USSD collections callback:
+        {"order_id": "...", "status": "COMPLETED"|"FAILED", "amount": "50.00", ...}
+    We set order_id == our internal reference at checkout-session creation
+    time, so order_id IS the Payment.reference — no separate mapping needed.
+    """
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
-        signature = request.headers.get('X-Paystack-Signature', '')
-        if not paystack.verify_webhook_signature(request.body, signature):
-            return Response({'error': 'Invalid signature'}, status=401)
+        try:
+            payload = json.loads(request.body) if request.body else request.data
+        except Exception:
+            payload = request.data
 
-        payload = json.loads(request.body)
-        event   = payload.get('event')
-        data    = payload.get('data', {})
+        order_id = payload.get('order_id', '')
+        status   = payload.get('status', '')
+        logger.info(f'Nalo checkout webhook: order_id={order_id} status={status}')
 
-        if event == 'charge.success':
-            reference = data.get('reference', '')
-            import logging as _wh_log
-            _log = _wh_log.getLogger(__name__)
+        if not order_id:
+            return Response({'status': 'error', 'message': 'order_id missing'}, status=400)
 
-            # ── 1. Mark Payment record as SUCCESS ────────────────────────────
-            payment_obj = None
-            try:
-                payment_obj = Payment.objects.get(reference=reference)
-                if payment_obj.status != Payment.Status.SUCCESS:
-                    payment_obj.status        = Payment.Status.SUCCESS
-                    payment_obj.paystack_id   = str(data.get('id', ''))
-                    payment_obj.channel       = data.get('channel', '')
-                    payment_obj.paystack_data = data
-                    payment_obj.save()
-            except Payment.DoesNotExist:
-                payment_obj = None
+        try:
+            payment = Payment.objects.get(reference=order_id)
+        except Payment.DoesNotExist:
+            logger.warning(f'Nalo checkout webhook: no Payment found for order_id={order_id}')
+            return Response({'status': 'error', 'message': 'reference not found'}, status=404)
 
-            # ── 2. AUTO-CAST THE VOTE if it hasn't been cast yet ────────────
-            # FIX: USSD payments (ref starts with "USSD-") are handled
-            # exclusively by NaloPaymentCallbackView in ussd/views.py.
-            # If we also cast here, every USSD vote gets doubled.
-            # EVOTE- refs (Paystack web/mobile) are safe to auto-cast here.
-            is_ussd_ref = reference.startswith('USSD-')
-            if payment_obj and payment_obj.category_id and payment_obj.candidate_id and not is_ussd_ref:
-                from apps.voting.models import Vote
-                already_cast = Vote.objects.filter(payment_ref=reference).exists()
-                if not already_cast:
-                    try:
-                        from apps.voting.services import VoteCaster
-                        caster = VoteCaster(
-                            event=payment_obj.event,
-                            voter=payment_obj.user,
-                            request=None,
-                            ip='127.0.0.1',
-                        )
-                        result = caster.cast_vote(
-                            category_id=str(payment_obj.category_id),
-                            candidate_ids=[str(payment_obj.candidate_id)],
-                            payment_ref=reference,
-                            quantity=payment_obj.votes_bought or 1,
-                        )
-                        if result.get('success'):
-                            _log.info(
-                                f'Webhook auto-cast success for ref={reference} '
-                                f'cat={payment_obj.category_id} cand={payment_obj.candidate_id}'
-                            )
-                        else:
-                            _log.warning(
-                                f'Webhook auto-cast returned error for ref={reference}: '
-                                f'{result.get("error")}'
-                            )
-                    except Exception as exc:
-                        _log.error(f'Webhook auto-cast exception for ref={reference}: {exc}')
+        if status != 'COMPLETED':
+            if status == 'FAILED' and payment.status == Payment.Status.PENDING:
+                payment.status = Payment.Status.FAILED
+                payment.paystack_data = payload
+                payment.save(update_fields=['status', 'paystack_data'])
+            return Response({'status': 'ok'})
 
-            # ── 3. Handle ticket purchases ───────────────────────────────────
-            from apps.tickets.models import Ticket as TicketModel
-            from apps.tickets.services import verify_ticket_payment
-            if reference and TicketModel.objects.filter(paystack_ref=reference, status='pending').exists():
+        # ── 1. Mark Payment record as SUCCESS (idempotent) ──────────────────
+        if payment.status != Payment.Status.SUCCESS:
+            payment.status        = Payment.Status.SUCCESS
+            payment.channel       = Payment.Channel.MOBILE_MONEY if not payload.get('email') else Payment.Channel.CARD
+            payment.paystack_data = payload
+            payment.save()
+
+        # ── 2. Auto-cast the vote if it hasn't been cast yet ─────────────────
+        if payment.category_id and payment.candidate_id:
+            from apps.voting.models import Vote
+            already_cast = Vote.objects.filter(payment_ref=order_id).exists()
+            if not already_cast:
                 try:
-                    verify_ticket_payment(reference)
-                except Exception as e:
-                    _log.error(f'Webhook ticket verify failed for {reference}: {e}')
+                    from apps.voting.services import VoteCaster
+                    caster = VoteCaster(
+                        event=payment.event,
+                        voter=payment.user,
+                        request=None,
+                        ip='127.0.0.1',
+                    )
+                    result = caster.cast_vote(
+                        category_id=str(payment.category_id),
+                        candidate_ids=[str(payment.candidate_id)],
+                        payment_ref=order_id,
+                        quantity=payment.votes_bought or 1,
+                    )
+                    if result.get('success'):
+                        logger.info(f'Nalo checkout webhook: vote cast for ref={order_id}')
+                    else:
+                        logger.warning(f'Nalo checkout webhook: cast_vote returned error for ref={order_id}: {result.get("error")}')
+                except Exception as exc:
+                    logger.error(f'Nalo checkout webhook: exception casting vote for ref={order_id}: {exc}')
+
+        # ── 3. Handle ticket purchases ────────────────────────────────────────
+        from apps.tickets.models import Ticket as TicketModel
+        from apps.tickets.services import verify_ticket_payment
+        if TicketModel.objects.filter(paystack_ref=order_id, status='pending').exists():
+            try:
+                verify_ticket_payment(order_id)
+            except Exception as e:
+                logger.error(f'Nalo checkout webhook: ticket verify failed for {order_id}: {e}')
 
         return Response({'status': 'ok'})
 
