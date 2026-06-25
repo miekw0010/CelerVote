@@ -86,6 +86,27 @@ export function PaymentModal({
 
   const totalAmount = pricePerVote * quantity;
 
+  const focusBackToOriginalTab = () => {
+    // Close the Nalo checkout tab if it's still open, then pull the
+    // browser's focus back to this (the original) tab/window.
+    // Works reliably on Chrome/Edge/Firefox desktop since this window
+    // is the "opener" of the popup; mobile Safari sometimes ignores
+    // focus-stealing as an anti-abuse measure, so this is a best-effort
+    // improvement, not a guarantee.
+    try {
+      if (checkoutWindowRef.current && !checkoutWindowRef.current.closed) {
+        checkoutWindowRef.current.close();
+      }
+    } catch (e) {
+      // Cross-origin or already-closed window — ignore.
+    }
+    try {
+      window.focus();
+    } catch (e) {
+      // Some browsers block this; fail silently.
+    }
+  };
+
   const checkPaymentStatus = async (ref: string): Promise<boolean> => {
     try {
       const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/v1";
@@ -101,6 +122,7 @@ export function PaymentModal({
           clearInterval(pollingRef.current);
           pollingRef.current = null;
         }
+        focusBackToOriginalTab();
         setStep("success");
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
         setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
@@ -140,6 +162,24 @@ export function PaymentModal({
       }
       await checkPaymentStatus(reference);
     }, 5000);
+
+    // Lightweight watcher: the moment the user closes the Nalo checkout
+    // tab, fire an immediate status check rather than waiting for the
+    // next 5s tick. This shaves a few seconds off the "switch back and
+    // it's already done" experience without changing the proven 5s
+    // polling cadence above (which remains the source of truth/backstop).
+    let closeCheckCount = 0;
+    const closeWatcher = setInterval(() => {
+      closeCheckCount++;
+      if (verifiedRef.current || closeCheckCount > 240) { // ~2 min safety cap
+        clearInterval(closeWatcher);
+        return;
+      }
+      if (checkoutWindowRef.current && checkoutWindowRef.current.closed) {
+        clearInterval(closeWatcher);
+        checkPaymentStatus(reference);
+      }
+    }, 500);
   };
 
   const handlePay = async () => {
@@ -267,6 +307,11 @@ export function PaymentModal({
       });
       const data = await res.json();
       if (data.votes_cast > 0 || data.status === "success") {
+        try {
+          if (checkoutWindowRef.current && !checkoutWindowRef.current.closed) {
+            checkoutWindowRef.current.close();
+          }
+        } catch (e) { /* ignore */ }
         setStep("success");
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ["#01003c", "#C9A84C", "#ffffff", "#ffd700"] });
         setTimeout(() => confetti({ particleCount: 50, spread: 90, origin: { y: 0.5, x: 0.2 }, colors: ["#01003c", "#C9A84C"] }), 250);
