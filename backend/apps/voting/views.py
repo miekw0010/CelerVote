@@ -80,7 +80,7 @@ class CastVoteView(APIView):
         event = get_object_or_404(Event, slug=data['event_slug'])
 
         # Paid events: allow unauthenticated voters — payment reference proves identity.
-        # The VoteCaster verifies the payment with Paystack before casting any vote,
+        # The VoteCaster verifies the payment before casting any vote,
         # so there is no way to vote without a real successful payment.
         # Free events with require_auth still enforce login.
         if event.require_auth and not event.is_paid and not request.user.is_authenticated:
@@ -401,17 +401,27 @@ class ResetVotesView(APIView):
         )
         return Response({'message': f'All votes reset for {event.title}'})
 
+
 class RecoverVoteView(APIView):
-    """Admin tool: verify a Paystack reference and manually cast missing votes."""
+    """Admin tool: verify a payment reference and manually cast missing votes.
+
+    FIX: previously hardcoded a call to Paystack's verify API for EVERY
+    reference, regardless of which provider actually processed the payment.
+    Since the project migrated to Nalo for web checkout (refs still use the
+    EVOTE- prefix) and USSD payments use Nalo collections, Paystack has zero
+    record of these and always returned status=false/amount=0 — showing
+    "Payment not successful" / "Amount paid 0.00" for transactions that had
+    genuinely succeeded and already had votes cast via the webhook.
+
+    Fix: check our own Payment record FIRST (status is already correct,
+    set by whichever webhook actually processed the payment — Nalo checkout
+    or Nalo USSD collections). This is now the single source of truth.
+    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        from django.conf import settings
-        from django.db.models import F
         from apps.events.models import Event, Category, Candidate
-        from apps.voting.services import encrypt_vote_data, get_device_fingerprint
-        from django.utils import timezone
-        import requests as _requests
+        from apps.payments.models import Payment as PaymentModel
 
         if request.user.role not in ['admin', 'superadmin']:
             return Response({'error': 'Permission denied.'}, status=403)
@@ -432,23 +442,21 @@ class RecoverVoteView(APIView):
                 'message': f'{votes.count()} vote(s) already exist for this reference.',
             })
 
-        # Verify with Paystack
+        # ── Check OUR OWN Payment record first — this is the source of truth ──
+        # set correctly by whichever webhook (Nalo checkout or Nalo USSD)
+        # actually processed the transaction.
         try:
-            resp = _requests.get(
-                f'https://api.paystack.co/transaction/verify/{reference}',
-                headers={'Authorization': f'Bearer {settings.PAYSTACK_SECRET_KEY}'},
-                timeout=10,
-            )
-            data = resp.json()
-        except Exception as e:
-            return Response({'error': f'Paystack API error: {str(e)}'}, status=502)
+            payment_record = PaymentModel.objects.get(reference=reference)
+        except PaymentModel.DoesNotExist:
+            return Response({'error': f'No payment record found for reference {reference}.'}, status=404)
 
-        if not (data.get('status') and data.get('data', {}).get('status') == 'success'):
-            return Response({'error': 'Payment was not successful on Paystack. Cannot recover.'}, status=400)
+        voter_email = payment_record.email or ''
+        quantity    = payment_record.votes_bought or 1
 
-        txn          = data['data']
-        paid_kobo    = txn.get('amount', 0)
-        voter_email  = txn.get('customer', {}).get('email', '')
+        if payment_record.status != PaymentModel.Status.SUCCESS:
+            return Response({
+                'error': f'Payment status is "{payment_record.status}" — not yet confirmed successful. Cannot recover.'
+            }, status=400)
 
         try:
             event     = Event.objects.get(slug=event_slug)
@@ -457,23 +465,14 @@ class RecoverVoteView(APIView):
         except Exception as e:
             return Response({'error': f'Invalid event/category/candidate: {str(e)}'}, status=400)
 
-        # Calculate quantity from amount paid
-        price_kobo = int(float(event.price_per_vote) * 100)
-        quantity   = max(1, paid_kobo // price_kobo) if price_kobo > 0 else 1
-
         # Get or create a User account for the voter so cast_vote() can attach it
         from django.contrib.auth import get_user_model
         User   = get_user_model()
-        voter  = User.objects.filter(email=voter_email).first()
+        voter  = User.objects.filter(email=voter_email).first() if voter_email else None
 
-        # ── FIX: route through VoteCaster.cast_vote() instead of writing
-        # Vote rows directly. This view previously duplicated all the vote-
-        # writing logic with NO lock and NO atomic transaction — meaning an
-        # admin clicking "Recover" at the same moment the webhook also fired
-        # for the same ref could create duplicate votes, completely bypassing
-        # the select_for_update() race-condition fix in cast_vote(). Using
-        # cast_vote() here means every vote-write path now shares the exact
-        # same locking, idempotency, and fraud-bypass-for-paid-votes logic.
+        # Route through VoteCaster.cast_vote() — shares the same locking,
+        # idempotency, and fraud-bypass-for-paid-votes logic as every other
+        # vote-write path (webhook, USSD callback, frontend castVote).
         caster = VoteCaster(event=event, voter=voter, request=None, ip='0.0.0.0')
         result = caster.cast_vote(
             category_id=str(category.id),
@@ -487,8 +486,6 @@ class RecoverVoteView(APIView):
 
         from django.core.cache import cache
         cache.delete(f'live_results:{event.id}')
-
-
 
         from .services import log_admin_action
         log_admin_action(
@@ -511,12 +508,20 @@ class RecoverVoteView(APIView):
 
 
 class CheckReferenceView(APIView):
-    """Admin tool: check a Paystack reference — was it paid? were votes cast?"""
+    """Admin tool: check a payment reference — was it paid? were votes cast?
+
+    FIX: previously hardcoded a call to Paystack's verify API for every
+    reference. Now checks our own Payment record first (correct regardless
+    of provider — Paystack, Nalo checkout, or Nalo USSD), and only attempts
+    a live Paystack lookup as a secondary check for genuinely Paystack-era
+    references that predate the Nalo migration.
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         from django.conf import settings
         import requests as _requests
+        from apps.payments.models import Payment as PaymentModel
 
         if request.user.role not in ['admin', 'superadmin']:
             return Response({'error': 'Permission denied.'}, status=403)
@@ -527,6 +532,31 @@ class CheckReferenceView(APIView):
 
         votes_cast = Vote.objects.filter(payment_ref=reference).count()
 
+        # ── Check our own Payment record first — correct for every provider ──
+        try:
+            pm = PaymentModel.objects.get(reference=reference)
+            saved_category_id  = str(pm.category_id)  if pm.category_id  else None
+            saved_candidate_id = str(pm.candidate_id) if pm.candidate_id else None
+
+            return Response({
+                'reference':           reference,
+                'payment_status':      pm.status,
+                'amount_paid':         float(pm.amount),
+                'currency':            pm.currency,
+                'voter_email':         pm.email,
+                'voter_phone':         pm.phone,
+                'paid_at':             pm.updated_at.isoformat() if hasattr(pm, 'updated_at') else None,
+                'votes_cast':          votes_cast,
+                'needs_recovery':      pm.status == PaymentModel.Status.SUCCESS and votes_cast == 0,
+                'saved_category_id':   saved_category_id,
+                'saved_candidate_id':  saved_candidate_id,
+                'provider':            'nalo' if str(pm.reference).startswith(('EVOTE-', 'USSD-')) else 'unknown',
+            })
+        except PaymentModel.DoesNotExist:
+            pass
+
+        # ── Fall back to Paystack only if no local Payment record exists ──
+        # (legacy references from before the Nalo migration)
         try:
             resp = _requests.get(
                 f'https://api.paystack.co/transaction/verify/{reference}',
@@ -535,18 +565,10 @@ class CheckReferenceView(APIView):
             )
             txn_data = resp.json().get('data', {})
         except Exception as e:
-            return Response({'error': f'Paystack API error: {str(e)}'}, status=502)
+            return Response({'error': f'No local Payment record found, and Paystack API error: {str(e)}'}, status=502)
 
-        # Try to get saved category/candidate from Payment record
-        from apps.payments.models import Payment as PaymentModel
-        saved_category_id  = None
-        saved_candidate_id = None
-        try:
-            pm = PaymentModel.objects.get(reference=reference)
-            saved_category_id  = str(pm.category_id)  if pm.category_id  else None
-            saved_candidate_id = str(pm.candidate_id) if pm.candidate_id else None
-        except PaymentModel.DoesNotExist:
-            pass
+        if not txn_data:
+            return Response({'error': f'No payment record found for reference {reference} (checked local DB and Paystack).'}, status=404)
 
         return Response({
             'reference':         reference,
@@ -557,9 +579,9 @@ class CheckReferenceView(APIView):
             'paid_at':           txn_data.get('paid_at'),
             'votes_cast':        votes_cast,
             'needs_recovery':    txn_data.get('status') == 'success' and votes_cast == 0,
-            'saved_category_id':  saved_category_id,
-            'saved_candidate_id': saved_candidate_id,
+            'provider':          'paystack',
         })
+
 
 class ExportView(APIView):
     permission_classes = [IsAuthenticated]
