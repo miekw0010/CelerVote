@@ -541,6 +541,7 @@ class CheckReferenceView(APIView):
             return Response({
                 'reference':           reference,
                 'payment_status':      pm.status,
+                'paystack_status':     'success' if pm.status == 'success' else pm.status,
                 'amount_paid':         float(pm.amount),
                 'currency':            pm.currency,
                 'voter_email':         pm.email,
