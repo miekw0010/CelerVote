@@ -180,11 +180,28 @@ class PaymentStatusView(APIView):
 @method_decorator(csrf_exempt, name='dispatch')
 class NaloCheckoutWebhookView(APIView):
     """
-    Handles Nalo Hosted Checkout callbacks. Payload shape (per NALOPAY docs)
-    is DIFFERENT from the USSD collections callback:
-        {"order_id": "...", "status": "COMPLETED"|"FAILED", "amount": "50.00", ...}
-    We set order_id == our internal reference at checkout-session creation
-    time, so order_id IS the Payment.reference — no separate mapping needed.
+    Handles Nalo Hosted Checkout callbacks. Payload shape (per NALOPAY docs):
+        {
+          "order_id": "<NALO's own internal transaction id>",
+          "status": "COMPLETED"|"PENDING"|"FAILED",
+          "amount": "50.00",
+          "reference": "<OUR reference, e.g. EVOTE-XXXX>",
+          "extra_data": {...},
+          ...
+        }
+
+    IMPORTANT — bug fixed here:
+    `order_id` is NALO'S OWN internal transaction id (e.g. "mNPtrGEoYAmZX5hwmBaDfE")
+    — it is NOT the same as our Payment.reference (e.g. "EVOTE-16251C663BFB").
+    The previous version looked up Payment.objects.get(reference=order_id),
+    which always raised DoesNotExist because order_id never matches our
+    reference field. This caused every single webhook delivery to 404,
+    Nalo retried repeatedly, and the retry storm contributed to sessions
+    being auto-suspended by the fraud detector.
+
+    Fix: read OUR reference from payload['reference'] and use that for the
+    lookup instead. order_id is still logged for traceability but is no
+    longer used to find the Payment record.
     """
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -195,17 +212,18 @@ class NaloCheckoutWebhookView(APIView):
         except Exception:
             payload = request.data
 
-        order_id = payload.get('order_id', '')
-        status   = payload.get('status', '')
-        logger.info(f'Nalo checkout webhook: order_id={order_id} status={status}')
+        order_id  = payload.get('order_id', '')
+        reference = payload.get('reference', '') or order_id  # fall back to order_id only if reference truly absent
+        status    = payload.get('status', '')
+        logger.info(f'Nalo checkout webhook: order_id={order_id} reference={reference} status={status}')
 
-        if not order_id:
-            return Response({'status': 'error', 'message': 'order_id missing'}, status=400)
+        if not reference:
+            return Response({'status': 'error', 'message': 'reference missing'}, status=400)
 
         try:
-            payment = Payment.objects.get(reference=order_id)
+            payment = Payment.objects.get(reference=reference)
         except Payment.DoesNotExist:
-            logger.warning(f'Nalo checkout webhook: no Payment found for order_id={order_id}')
+            logger.warning(f'Nalo checkout webhook: no Payment found for reference={reference} (order_id={order_id})')
             return Response({'status': 'error', 'message': 'reference not found'}, status=404)
 
         if status != 'COMPLETED':
@@ -225,7 +243,7 @@ class NaloCheckoutWebhookView(APIView):
         # ── 2. Auto-cast the vote if it hasn't been cast yet ─────────────────
         if payment.category_id and payment.candidate_id:
             from apps.voting.models import Vote
-            already_cast = Vote.objects.filter(payment_ref=order_id).exists()
+            already_cast = Vote.objects.filter(payment_ref=reference).exists()
             if not already_cast:
                 try:
                     from apps.voting.services import VoteCaster
@@ -238,24 +256,24 @@ class NaloCheckoutWebhookView(APIView):
                     result = caster.cast_vote(
                         category_id=str(payment.category_id),
                         candidate_ids=[str(payment.candidate_id)],
-                        payment_ref=order_id,
+                        payment_ref=reference,
                         quantity=payment.votes_bought or 1,
                     )
                     if result.get('success'):
-                        logger.info(f'Nalo checkout webhook: vote cast for ref={order_id}')
+                        logger.info(f'Nalo checkout webhook: vote cast for ref={reference}')
                     else:
-                        logger.warning(f'Nalo checkout webhook: cast_vote returned error for ref={order_id}: {result.get("error")}')
+                        logger.warning(f'Nalo checkout webhook: cast_vote returned error for ref={reference}: {result.get("error")}')
                 except Exception as exc:
-                    logger.error(f'Nalo checkout webhook: exception casting vote for ref={order_id}: {exc}')
+                    logger.error(f'Nalo checkout webhook: exception casting vote for ref={reference}: {exc}')
 
         # ── 3. Handle ticket purchases ────────────────────────────────────────
         from apps.tickets.models import Ticket as TicketModel
         from apps.tickets.services import verify_ticket_payment
-        if TicketModel.objects.filter(paystack_ref=order_id, status='pending').exists():
+        if TicketModel.objects.filter(paystack_ref=reference, status='pending').exists():
             try:
-                verify_ticket_payment(order_id)
+                verify_ticket_payment(reference)
             except Exception as e:
-                logger.error(f'Nalo checkout webhook: ticket verify failed for {order_id}: {e}')
+                logger.error(f'Nalo checkout webhook: ticket verify failed for {reference}: {e}')
 
         return Response({'status': 'ok'})
 
