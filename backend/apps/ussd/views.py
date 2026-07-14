@@ -500,10 +500,10 @@ class USSDView(View):
     def _handle_qty_input(self, uid, msisdn, session_id, state, userdata, network, next_level):
         try:
             qty = int(userdata.strip())
-            if qty < 1 or qty > 100:
+            if qty < 1 or qty > 300:
                 raise ValueError
         except ValueError:
-            return cont(uid, msisdn, "Invalid number.\nEnter number of votes (1-100):")
+            return cont(uid, msisdn, "Invalid number.\nEnter number of votes (1-300):")
 
         price = float(state.get('price', 0))
         total = price * qty
