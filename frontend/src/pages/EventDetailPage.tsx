@@ -688,7 +688,7 @@ const EventDetailPage = () => {
                   style={{ background: NAVY }}>
                   {voterRollLoading ? <><Loader2 className="w-5 h-5 animate-spin" /> Verifying…</> : <><Shield className="w-5 h-5" /> Access My Ballot</>}
                 </button>
-                <p className="text-center text-xs text-muted-foreground mt-4">🔒 Each code is single-use</p>
+                <p className="text-center text-xs text-muted-foreground mt-4">🔒 Each code is single use</p>
               </div>
             </motion.div>
           </div>

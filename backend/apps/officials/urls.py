@@ -15,6 +15,12 @@ urlpatterns = [
     path('voter-roll/upload/', views.OfficialVoterRollCSVUploadView.as_view(), name='official-voter-roll-upload'),
     path('withdrawals/',       views.OfficialWithdrawalView.as_view(),  name='official-withdrawals'),
 
+    # ── Official: Nominations ─────────────────────────────────────────────────
+    path('nominations/toggle/',           views.OfficialNominationsToggleView.as_view(), name='official-nominations-toggle'),
+    path('nominations/<uuid:id>/action/', views.OfficialNominationActionView.as_view(), name='official-nomination-action'),
+    path('nominations/<uuid:id>/',        views.OfficialNominationDetailView.as_view(), name='official-nomination-detail'),
+    path('nominations/',                  views.OfficialNominationListView.as_view(),   name='official-nominations'),
+
     # ── Admin management (specific paths before uuid pattern) ─────────────────
     path('admin/withdrawals/<uuid:pk>/review/', views.AdminWithdrawalReviewView.as_view(),  name='admin-withdrawal-review'),
     path('admin/withdrawals/',                  views.AdminWithdrawalListView.as_view(),     name='admin-withdrawals'),

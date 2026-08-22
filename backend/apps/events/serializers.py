@@ -1,6 +1,6 @@
 import re
 from rest_framework import serializers
-from .models import Event, Category, Candidate
+from .models import Event, Category, Candidate, Nomination
 
 
 def strip_html(value: str) -> str:
@@ -30,12 +30,14 @@ def validate_image(value, max_mb=5):
 
 
 class CandidateSerializer(serializers.ModelSerializer):
+    category_id = serializers.UUIDField(source='category.id', read_only=True)
+
     class Meta:
         model  = Candidate
         fields = [
-            'id', 'name', 'description', 'photo', 'video_url',
+            'id', 'name', 'full_name', 'phone', 'description', 'photo', 'video_url',
             'order', 'is_active', 'vote_count', 'vote_percentage',
-            'extra_info', 'code', 'created_at'
+            'extra_info', 'code', 'category_id', 'created_at'
         ]
         read_only_fields = ['id', 'vote_count', 'vote_percentage', 'code', 'created_at']
 
@@ -76,15 +78,27 @@ class CandidatePublicSerializer(serializers.ModelSerializer):
 
 
 class CandidateWriteSerializer(serializers.ModelSerializer):
+    # Optional — lets an admin reassign a contestant to a different category
+    # within the same event. Does NOT regenerate the contestant's code.
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(), required=False
+    )
+    code = serializers.CharField(read_only=True)
+
     class Meta:
         model  = Candidate
-        fields = ['name', 'description', 'photo', 'video_url', 'order', 'extra_info']
+        fields = ['name', 'full_name', 'phone', 'description', 'photo', 'video_url', 'order', 'extra_info', 'category', 'code']
 
     def validate_name(self, value):
         cleaned = re.sub(r'<[^>]+>', '', value).strip()
         if len(cleaned) < 1:
             raise serializers.ValidationError('Candidate name cannot be empty.')
         return cleaned
+
+    def validate_full_name(self, value):
+        if value:
+            return re.sub(r'<[^>]+>', '', value).strip()
+        return value
 
     def validate_description(self, value):
         if value:
@@ -93,6 +107,13 @@ class CandidateWriteSerializer(serializers.ModelSerializer):
 
     def validate_photo(self, value):
         return validate_image(value, max_mb=3)
+
+    def validate_category(self, value):
+        # Reassignment must stay within the same event.
+        instance = getattr(self, 'instance', None)
+        if instance and value.event_id != instance.category.event_id:
+            raise serializers.ValidationError('Cannot move a contestant to a category in a different event.')
+        return value
 
 
 class VoterGroupMinimalSerializer(serializers.ModelSerializer):
@@ -184,7 +205,7 @@ class EventListSerializer(serializers.ModelSerializer):
             'is_paid', 'price_per_vote', 'currency',
             'start_time', 'end_time', 'banner_image', 'thumbnail',
             'theme_color', 'total_votes', 'category_count',
-            'show_live_results', 'results_published', 'hide_vote_counts', 'created_at'
+            'show_live_results', 'results_published', 'hide_vote_counts', 'nominations_open', 'created_at'
         ]
 
     def get_category_count(self, obj):
@@ -325,7 +346,7 @@ class EventCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError('End time must be after start time.')
         if data.get('event_type') in ['survey'] and data.get('is_paid'):
             raise serializers.ValidationError(
-                'Survey/Poll events cannot have pay-per-vote enabled.'
+                'Survey/Poll events cannot have pay per vote enabled.'
             )
         return data
 
@@ -343,7 +364,8 @@ class EventUpdateSerializer(serializers.ModelSerializer):
             'allow_multiple_votes', 'max_votes_per_user', 'max_choices_per_vote',
             'start_time', 'end_time', 'banner_image', 'thumbnail',
             'theme_color', 'theme_config', 'is_paid', 'price_per_vote',
-            'show_live_results', 'results_visible', 'results_published', 'hide_vote_counts', 'languages'
+            'show_live_results', 'results_visible', 'results_published', 'hide_vote_counts', 'languages',
+            'nominations_open'
         ]
 
     def validate_title(self, value):
@@ -356,3 +378,80 @@ class EventUpdateSerializer(serializers.ModelSerializer):
         if value:
             return sanitize_text(value)
         return value
+
+# ── Nominations ────────────────────────────────────────────────────────────
+
+class NominationCategoryMinimalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Category
+        fields = ['id', 'name']
+
+
+class NominatableEventSerializer(serializers.ModelSerializer):
+    """Used by the public 'Nominate' wizard — event + its selectable categories."""
+    categories = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Event
+        fields = ['id', 'slug', 'title', 'thumbnail', 'event_type', 'categories', 'nominations_open']
+
+    def get_categories(self, obj):
+        cats = obj.categories.filter(is_active=True).order_by('order', 'name')
+        return NominationCategoryMinimalSerializer(cats, many=True).data
+
+
+class NominationCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = Nomination
+        fields = ['category', 'full_name', 'stage_name', 'phone', 'photo', 'reason']
+
+    def validate_full_name(self, value):
+        cleaned = strip_html(value).strip()
+        if len(cleaned) < 2:
+            raise serializers.ValidationError('Enter your full name.')
+        return cleaned
+
+    def validate_stage_name(self, value):
+        cleaned = strip_html(value).strip()
+        if len(cleaned) < 1:
+            raise serializers.ValidationError('Enter a stage name.')
+        return cleaned
+
+    def validate_phone(self, value):
+        cleaned = value.strip()
+        if not re.match(r'^[\d\s\+\-\(\)]{7,20}$', cleaned):
+            raise serializers.ValidationError('Enter a valid phone number.')
+        return cleaned
+
+    def validate_reason(self, value):
+        if value:
+            return strip_html(value).strip()
+        return value
+
+    def validate_photo(self, value):
+        return validate_image(value, max_mb=3)
+
+    def validate_category(self, value):
+        event = self.context.get('event')
+        if event and value.event_id != event.id:
+            raise serializers.ValidationError('Selected category does not belong to this event.')
+        return value
+
+
+class NominationSerializer(serializers.ModelSerializer):
+    """Full nomination detail — used by admin & official review screens."""
+    category      = NominationCategoryMinimalSerializer(read_only=True)
+    event_title   = serializers.CharField(source='event.title', read_only=True)
+    event_slug    = serializers.CharField(source='event.slug', read_only=True)
+    candidate_id  = serializers.UUIDField(source='candidate.id', read_only=True)
+    candidate_code = serializers.CharField(source='candidate.code', read_only=True)
+
+    class Meta:
+        model  = Nomination
+        fields = [
+            'id', 'event_title', 'event_slug', 'category',
+            'full_name', 'stage_name', 'phone', 'photo', 'reason',
+            'status', 'rejection_reason', 'candidate_id', 'candidate_code',
+            'reviewed_at', 'created_at',
+        ]
+        read_only_fields = fields

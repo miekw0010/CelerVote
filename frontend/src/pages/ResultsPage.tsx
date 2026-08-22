@@ -340,7 +340,7 @@ const ResultsPage = () => {
               <div>
                 <h1 className="text-3xl md:text-4xl font-display font-bold mb-2">{results.event_title}</h1>
                 <p className="text-muted-foreground text-sm">
-                  {isLive ? "Results update in real-time as votes come in" : "Final results"}
+                  {isLive ? "Results update in real time as votes come in" : "Final results"}
                   &nbsp;·&nbsp; {totalVotes.toLocaleString()} total votes
                 </p>
               </div>

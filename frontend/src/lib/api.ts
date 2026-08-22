@@ -320,6 +320,73 @@ export const eventsApi = {
     }),
 };
 
+// ── NOMINATIONS API ───────────────────────────────────────────────
+
+export const nominationsApi = {
+  /** Public: events currently open for nomination, with nested categories */
+  getOptions: () => apiFetch(`/events/nominate/options/`, {}, false),
+
+  /** Public: submit a nomination (multipart — use FormData) */
+  submit: (slug: string, formData: FormData) => {
+    const token = getAccessToken();
+    return fetch(`${API_URL}/events/${slug}/nominate/`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    }).then(handleResponse);
+  },
+
+  /** Admin: list nominations for an event, filtered by status (default 'pending') */
+  adminList: (slug: string, status = "pending") =>
+    apiFetch(`/events/admin/${slug}/nominations/?status=${status}`),
+
+  /** Admin: edit a pending nomination's info / reassign category */
+  adminUpdate: (slug: string, id: string, data: Record<string, any>) =>
+    apiFetch(`/events/admin/${slug}/nominations/${id}/`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  /** Admin: approve or reject a pending nomination */
+  adminAction: (slug: string, id: string, action: "approve" | "reject", rejection_reason?: string) =>
+    apiFetch(`/events/admin/${slug}/nominations/${id}/action/`, {
+      method: "POST",
+      body: JSON.stringify({ action, rejection_reason }),
+    }),
+
+  /** Official: list nominations for their event */
+  officialList: (status = "pending") =>
+    apiFetch(`/officials/nominations/?status=${status}`),
+
+  /** Official: edit a pending nomination */
+  officialUpdate: (id: string, data: Record<string, any>) =>
+    apiFetch(`/officials/nominations/${id}/`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  /** Official: approve or reject a pending nomination */
+  officialAction: (id: string, action: "approve" | "reject", rejection_reason?: string) =>
+    apiFetch(`/officials/nominations/${id}/action/`, {
+      method: "POST",
+      body: JSON.stringify({ action, rejection_reason }),
+    }),
+
+  /** Official: open or close nominations for their own event */
+  officialToggle: (nominations_open: boolean) =>
+    apiFetch(`/officials/nominations/toggle/`, {
+      method: "PATCH",
+      body: JSON.stringify({ nominations_open }),
+    }),
+
+  /** Admin: open or close nominations for an event (quick toggle, same effect as the Edit Event checkbox) */
+  adminToggle: (slug: string, nominations_open: boolean) =>
+    apiFetch(`/events/admin/${slug}/`, {
+      method: "PATCH",
+      body: JSON.stringify({ nominations_open }),
+    }),
+};
+
 // ── VOTING API ────────────────────────────────────────────────────
 
 export const votingApi = {

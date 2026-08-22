@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib import admin
-from .models import Event, Category, Candidate
+from .models import Event, Category, Candidate, Nomination
 
 
 class EventAdminForm(forms.ModelForm):
@@ -58,6 +58,14 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Candidate)
 class CandidateAdmin(admin.ModelAdmin):
-    list_display  = ['name', 'category', 'vote_count', 'vote_percentage', 'is_active']
+    list_display  = ['name', 'full_name', 'category', 'code', 'vote_count', 'vote_percentage', 'is_active']
     list_filter   = ['is_active', 'category__event']
-    search_fields = ['name', 'category__name']
+    search_fields = ['name', 'full_name', 'category__name', 'code']
+
+
+@admin.register(Nomination)
+class NominationAdmin(admin.ModelAdmin):
+    list_display  = ['stage_name', 'full_name', 'event', 'category', 'status', 'created_at']
+    list_filter   = ['status', 'event']
+    search_fields = ['stage_name', 'full_name', 'phone', 'event__title']
+    readonly_fields = ['created_at', 'updated_at', 'reviewed_at']

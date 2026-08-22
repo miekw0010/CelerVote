@@ -135,7 +135,7 @@ export default function OfficialLoginPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-sm">Enter your phone number</p>
-                      <p className="text-xs text-muted-foreground">We'll send a one-time code to verify you</p>
+                      <p className="text-xs text-muted-foreground">We'll send a one time code to verify you</p>
                     </div>
                   </div>
 

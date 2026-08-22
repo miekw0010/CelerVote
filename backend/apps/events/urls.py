@@ -15,6 +15,11 @@ urlpatterns = [
     path('admin/<slug:slug>/voter-roll/upload/', views.VoterRollCSVUploadView.as_view(), name='voter-roll-upload'),
     path('admin/<slug:slug>/voter-roll/<uuid:voter_id>/resend/', views.VoterRollResendSMSView.as_view(), name='voter-roll-resend'),
 
+    # ── Nominations — admin ─────────────────────────────────────────────
+    path('admin/<slug:slug>/nominations/<uuid:id>/action/', views.AdminNominationActionView.as_view(), name='admin-nomination-action'),
+    path('admin/<slug:slug>/nominations/<uuid:id>/', views.AdminNominationDetailView.as_view(), name='admin-nomination-detail'),
+    path('admin/<slug:slug>/nominations/', views.AdminNominationListView.as_view(), name='admin-nominations'),
+
     path('admin/<slug:slug>/', views.AdminEventDetailView.as_view(), name='admin-event-detail'),
     path('<slug:slug>/categories/<uuid:cat_id>/candidates/<uuid:id>/', views.CandidateDetailView.as_view(), name='candidate-detail'),
     path('<slug:slug>/categories/<uuid:cat_id>/candidates/', views.CandidateListCreateView.as_view(), name='candidate-list'),
@@ -23,6 +28,10 @@ urlpatterns = [
 
     # ── Organizational Election — public ──────────────────────────────
     path('<slug:slug>/verify-code/', views.VotingCodeVerifyView.as_view(), name='verify-code'),
+
+    # ── Nominations — public ────────────────────────────────────────────
+    path('nominate/options/', views.NominatableEventsView.as_view(), name='nominate-options'),
+    path('<slug:slug>/nominate/', views.PublicNominationCreateView.as_view(), name='event-nominate'),
 
     path('<slug:slug>/', views.PublicEventDetailView.as_view(), name='event-detail'),
 ]

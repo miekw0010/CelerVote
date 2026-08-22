@@ -83,7 +83,7 @@ const GroupManager = ({ slug, groups, onRefresh }: { slug: string; groups: Voter
         </Button>
       </div>
       {groups.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-3">No groups yet. Add groups if voters belong to sub-groups (optional).</p>
+        <p className="text-xs text-muted-foreground text-center py-3">No groups yet. Add groups if voters belong to sub groups (optional).</p>
       ) : (
         <div className="space-y-2">
           {groups.map(g => (
@@ -211,7 +211,7 @@ const CSVUpload = ({ slug, onUploaded }: { slug: string; onUploaded: () => void 
         <p className="font-medium text-foreground">CSV Format</p>
         <p>Required column: <code className="text-secondary">id</code> / <code className="text-secondary">voter_id</code> / <code className="text-secondary">student_id</code> / <code className="text-secondary">index_number</code></p>
         <p>Optional columns: <code>name</code>, <code>phone</code>, <code>email</code>, <code>group</code> / <code>department</code> / <code>level</code></p>
-        <p className="text-green-400">Groups are auto-created from the group column values.</p>
+        <p className="text-green-400">Groups are auto created from the group column values.</p>
       </div>
 
       <div className="flex items-center gap-2">

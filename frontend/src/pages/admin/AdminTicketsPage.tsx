@@ -232,7 +232,7 @@ function EventModal({ event, onClose, onSaved }: {
             </div>
             <div>
               <Label className="text-xs font-semibold mb-1.5 block">Slug</Label>
-              <Input value={form.slug} onChange={e => setField("slug", e.target.value)} placeholder="auto-generated" />
+              <Input value={form.slug} onChange={e => setField("slug", e.target.value)} placeholder="auto generated" />
             </div>
           </div>
 
@@ -318,7 +318,7 @@ function EventModal({ event, onClose, onSaved }: {
                       <Input value={tier.description} onChange={e => setTierField(i, "description", e.target.value)} placeholder="Short description" className="h-8 text-sm" />
                     </div>
                     <div>
-                      <Label className="text-xs mb-1 block">Perks (comma-separated)</Label>
+                      <Label className="text-xs mb-1 block">Perks (comma separated)</Label>
                       <Input
                         value={Array.isArray(tier.perks) ? tier.perks.join(", ") : ""}
                         onChange={e => setTierField(i, "perks", e.target.value.split(",").map((p: string) => p.trim()).filter(Boolean))}

@@ -59,7 +59,7 @@ export const PrivacyPage = () => (
 
       <div className="glass-card p-6">
         <h2 className="font-display font-semibold text-foreground text-base mb-3">3. Vote Secrecy</h2>
-        <p>Your individual vote choices are <strong className="text-foreground">encrypted end-to-end</strong> and are never linked to your identity in our public-facing systems. Event organizers can only see aggregate results, not who voted for whom.</p>
+        <p>Your individual vote choices are <strong className="text-foreground">encrypted end to end</strong> and are never linked to your identity in our public facing systems. Event organizers can only see aggregate results, not who voted for whom.</p>
       </div>
 
       <div className="glass-card p-6">
@@ -161,17 +161,17 @@ export const SecurityPage = () => (
         },
         {
           title: "OTP Authentication",
-          desc: "All voters must verify their identity via a one-time password (OTP) sent to their email or phone before casting a vote. This prevents unauthorized voting.",
+          desc: "All voters must verify their identity via a one time password (OTP) sent to their email or phone before casting a vote. This prevents unauthorized voting.",
           icon: Shield,
         },
         {
           title: "Fraud Detection",
-          desc: "Our real-time fraud detection system monitors for suspicious activity including duplicate votes, unusual voting patterns, and bot activity. Suspicious sessions are automatically flagged for review.",
+          desc: "Our real time fraud detection system monitors for suspicious activity including duplicate votes, unusual voting patterns, and bot activity. Suspicious sessions are automatically flagged for review.",
           icon: Shield,
         },
         {
           title: "Audit Trail",
-          desc: "Every voting action is logged with a tamper-proof audit trail. This allows event organizers and administrators to verify the integrity of any election.",
+          desc: "Every voting action is logged with a tamper proof audit trail. This allows event organizers and administrators to verify the integrity of any election.",
           icon: FileText,
         },
         {
@@ -181,7 +181,7 @@ export const SecurityPage = () => (
         },
         {
           title: "Data Encryption at Rest",
-          desc: "All sensitive data stored in our database is encrypted at rest using industry-standard AES-256 encryption.",
+          desc: "All sensitive data stored in our database is encrypted at rest using industry standard AES-256 encryption.",
           icon: Lock,
         },
       ].map((item) => (

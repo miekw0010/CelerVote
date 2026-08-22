@@ -368,7 +368,7 @@ const CreateEventModal = ({ onCreated }: { onCreated: () => void }) => {
               <div className="p-3 rounded-lg border border-border">
                 <div className="flex items-center gap-2 mb-2">
                   <input type="checkbox" name="is_paid" id="is_paid" checked={form.is_paid} onChange={handleChange} />
-                  <label htmlFor="is_paid" className="text-sm font-medium">Enable Pay-per-vote</label>
+                  <label htmlFor="is_paid" className="text-sm font-medium">Enable Pay per vote</label>
                 </div>
                 {form.is_paid && (
                   <div className="grid grid-cols-2 gap-3 mt-2">
@@ -409,7 +409,7 @@ const CreateEventModal = ({ onCreated }: { onCreated: () => void }) => {
         {step === 2 && isOrg && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Add sub-groups in your organization (e.g. Level 100, Finance Dept). Voters in a group will only see categories assigned to their group.
+              Add sub groups in your organization (e.g. Level 100, Finance Dept). Voters in a group will only see categories assigned to their group.
               <strong className="text-foreground"> Skip if everyone votes on the same categories.</strong>
             </p>
             <div className="flex gap-2">
@@ -485,7 +485,7 @@ const CreateEventModal = ({ onCreated }: { onCreated: () => void }) => {
                       </label>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                         <input type="radio" checked={!cat.is_global} onChange={() => toggleCategoryGlobal(ci, false)} />
-                        <span className="font-medium">👥 Group-specific</span>
+                        <span className="font-medium">👥 Group specific</span>
                       </label>
                     </div>
                     {!cat.is_global && (
@@ -574,6 +574,7 @@ const EditEventModal = ({ event, onUpdated }: { event: any; onUpdated: () => voi
     show_live_results: event.show_live_results ?? true,
     results_published: event.results_published ?? false,
     hide_vote_counts:  event.hide_vote_counts  ?? false,
+    nominations_open:  event.nominations_open  ?? true,
   });
 
   const [form, setForm] = useState(buildForm);
@@ -720,7 +721,7 @@ const EditEventModal = ({ event, onUpdated }: { event: any; onUpdated: () => voi
             <div className="p-3 rounded-lg border border-border">
               <div className="flex items-center gap-2 mb-2">
                 <input type="checkbox" name="is_paid" id="edit_is_paid" checked={form.is_paid} onChange={handleChange} />
-                <label htmlFor="edit_is_paid" className="text-sm font-medium">Enable Pay-per-vote</label>
+                <label htmlFor="edit_is_paid" className="text-sm font-medium">Enable Pay per vote</label>
               </div>
               {form.is_paid && (
                 <div className="grid grid-cols-2 gap-3 mt-2">
@@ -747,6 +748,7 @@ const EditEventModal = ({ event, onUpdated }: { event: any; onUpdated: () => voi
               { name: "show_live_results", id: "show_live_results", label: "Show live results to voters during voting" },
               { name: "results_published", id: "results_published", label: "Publish results (visible on results page)" },
               { name: "hide_vote_counts",  id: "hide_vote_counts",  label: "Hide vote counts from voters while voting" },
+              { name: "nominations_open",  id: "nominations_open",  label: "Accept public self nominations for this event" },
             ].map(opt => (
               <div key={opt.id} className="flex items-center gap-2">
                 <input type="checkbox" name={opt.name} id={opt.id} checked={(form as any)[opt.name]} onChange={handleChange} />

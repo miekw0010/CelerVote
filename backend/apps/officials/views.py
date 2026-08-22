@@ -247,6 +247,7 @@ class OfficialDashboardView(APIView, IsOfficialPermission):
             if event.voting_mode == 'organizational':
                 data['voter_roll_stats'] = self._voter_roll_stats(official)
             data['results'] = self._election_results(official)
+            data['nominations_open'] = event.nominations_open
 
         data['withdrawals'] = WithdrawalRequestSerializer(
             official.withdrawal_requests.all()[:20], many=True
@@ -749,3 +750,106 @@ class AdminWithdrawalReviewView(APIView):
             pass
 
         return Response(WithdrawalRequestSerializer(wr).data)
+
+# ── Official: Nominations (election officials only) ──────────────────────────
+
+class OfficialNominationListView(APIView, IsOfficialPermission):
+    """List nominations for the official's event, optionally filtered by status."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        official = self._get_official(request)
+        if not official or official.event_kind != Official.EventKind.ELECTION:
+            return Response({'error': 'Election official access required.'}, status=403)
+
+        from apps.events import services as nomination_services
+        from apps.events.serializers import NominationSerializer
+
+        status_filter = request.query_params.get('status', 'pending')
+        qs = nomination_services.list_nominations(official.event, status=status_filter or None)
+        return Response(NominationSerializer(qs, many=True).data)
+
+
+class OfficialNominationDetailView(APIView, IsOfficialPermission):
+    """View or edit a single pending nomination for the official's event."""
+    permission_classes = [IsAuthenticated]
+
+    def _get(self, request, id):
+        official = self._get_official(request)
+        if not official or official.event_kind != Official.EventKind.ELECTION:
+            return None, None, Response({'error': 'Election official access required.'}, status=403)
+        from apps.events.models import Nomination
+        nomination = get_object_or_404(Nomination, id=id, event=official.event)
+        return official, nomination, None
+
+    def get(self, request, id):
+        official, nomination, err = self._get(request, id)
+        if err: return err
+        from apps.events.serializers import NominationSerializer
+        return Response(NominationSerializer(nomination).data)
+
+    def patch(self, request, id):
+        official, nomination, err = self._get(request, id)
+        if err: return err
+        from apps.events import services as nomination_services
+        from apps.events.serializers import NominationSerializer
+        try:
+            nomination_services.update_nomination(nomination, request.data)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+        return Response(NominationSerializer(nomination).data)
+
+
+class OfficialNominationActionView(APIView, IsOfficialPermission):
+    """Approve or reject a pending nomination for the official's event."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id):
+        official = self._get_official(request)
+        if not official or official.event_kind != Official.EventKind.ELECTION:
+            return Response({'error': 'Election official access required.'}, status=403)
+
+        from apps.events.models import Nomination
+        from apps.events import services as nomination_services
+        from apps.events.serializers import NominationSerializer
+
+        nomination = get_object_or_404(Nomination, id=id, event=official.event)
+        action = request.data.get('action', '').lower()
+        if action not in ('approve', 'reject'):
+            return Response({'error': 'action must be "approve" or "reject".'}, status=400)
+
+        try:
+            if action == 'approve':
+                nomination, candidate = nomination_services.approve_nomination(
+                    nomination, reviewer_official=official
+                )
+            else:
+                nomination = nomination_services.reject_nomination(
+                    nomination, reviewer_official=official,
+                    reason=request.data.get('rejection_reason', ''),
+                )
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+
+        return Response(NominationSerializer(nomination).data)
+
+
+class OfficialNominationsToggleView(APIView, IsOfficialPermission):
+    """Election official: open or close self-nominations for their own event."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        official = self._get_official(request)
+        if not official or official.event_kind != Official.EventKind.ELECTION:
+            return Response({'error': 'Election official access required.'}, status=403)
+
+        nominations_open = request.data.get('nominations_open')
+        if nominations_open is None:
+            return Response({'error': 'nominations_open (true/false) is required.'}, status=400)
+
+        event = official.event
+        event.nominations_open = bool(nominations_open) if not isinstance(nominations_open, str) \
+            else nominations_open.lower() in ('true', '1', 'yes')
+        event.save(update_fields=['nominations_open'])
+
+        return Response({'nominations_open': event.nominations_open})

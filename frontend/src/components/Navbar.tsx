@@ -11,6 +11,7 @@ const ORANGE = "#e87200";
 const navLinks = [
   { label: "HOME",        path: "/" },
   { label: "EVENTS",      path: "/events" },
+  { label: "NOMINATE",    path: "/nominate" },
   { label: "BUY TICKETS", path: "/tickets" },
   { label: "RESULTS",     path: "/results" },
   { label: "HOW IT WORKS",path: "/#how-it-works" },
@@ -112,16 +113,11 @@ export function Navbar() {
               </Button>
             </>
           ) : (
-            <>
-              <Link to="/auth">
-                <span className="text-sm font-bold cursor-pointer hover:opacity-70 transition-opacity" style={{ color: NAVY, letterSpacing: '0.05em' }}>LOG IN</span>
-              </Link>
-              <Link to="/auth">
-                <Button className="px-5 h-9 text-sm rounded font-bold text-white" style={{ background: '#e87200', fontFamily:"'Montserrat',sans-serif", letterSpacing: '0.05em' }}>
-                  GET STARTED
-                </Button>
-              </Link>
-            </>
+            <Link to="/auth">
+              <Button className="px-6 h-9 text-sm rounded font-bold text-white" style={{ background: '#e87200', fontFamily:"'Montserrat',sans-serif", letterSpacing: '0.05em' }}>
+                LOG IN
+              </Button>
+            </Link>
           )}
         </div>
 
@@ -160,14 +156,9 @@ export function Navbar() {
                     </Button>
                   </>
                 ) : (
-                  <>
-                    <Link to="/auth" onClick={() => setMobileOpen(false)}>
-                      <Button variant="outline" className="w-full font-bold" style={{ color: NAVY, borderColor: NAVY }}>LOG IN</Button>
-                    </Link>
-                    <Link to="/auth" onClick={() => setMobileOpen(false)}>
-                      <Button className="w-full font-bold text-white" style={{ background: '#e87200', fontFamily:"'Montserrat',sans-serif" }}>GET STARTED</Button>
-                    </Link>
-                  </>
+                  <Link to="/auth" onClick={() => setMobileOpen(false)}>
+                    <Button className="w-full font-bold text-white" style={{ background: '#e87200', fontFamily:"'Montserrat',sans-serif" }}>LOG IN</Button>
+                  </Link>
                 )}
               </div>
             </div>

@@ -449,7 +449,7 @@ const AuthPage = () => {
 
           <p className="text-xs text-muted-foreground text-center mt-5 flex items-center justify-center gap-1.5">
             <Shield className="w-3.5 h-3.5 text-secondary" />
-            Secured with end-to-end encryption · Powered by CelerVote
+            Secured with end to end encryption · Powered by CelerVote
           </p>
         </motion.div>
       </div>

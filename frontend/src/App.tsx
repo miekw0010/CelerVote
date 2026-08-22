@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import EventsPage from "./pages/EventsPage";
 import EventDetailPage from "./pages/EventDetailPage";
+import NominatePage from "./pages/NominatePage";
 import ResultsPage from "./pages/ResultsPage";
 import AuthPage from "./pages/AuthPage";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -25,6 +26,7 @@ import ServicesPage from "./pages/ServicesPage";
 import AdminFraudPage from "./pages/admin/AdminFraudPage";
 import AdminVoterRollPage from "./pages/admin/AdminVoterRollPage";
 import AdminOfficialsPage from "./pages/admin/AdminOfficialsPage";
+import AdminNominationsPage from "./pages/admin/AdminNominationsPage";
 import OfficialLoginPage from "./pages/official/OfficialLoginPage";
 import OfficialDashboard from "./pages/official/OfficialDashboard";
 import { PrivacyPage, TermsPage, SecurityPage, ContactPage } from "./pages/LegalPages";
@@ -61,6 +63,7 @@ const App = () => (
           <Route path="/"              element={<Index />} />
           <Route path="/events"        element={<EventsPage />} />
           <Route path="/events/:slug"  element={<EventDetailPage />} />
+          <Route path="/nominate"      element={<NominatePage />} />
           <Route path="/results"       element={<ResultsPage />} />
           <Route path="/results/:slug" element={<ResultsPage />} />
           <Route path="/auth"          element={<AuthPage />} />
@@ -89,6 +92,7 @@ const App = () => (
             <Route path="fraud"         element={<AdminFraudPage />} />
             <Route path="voter-roll"    element={<AdminVoterRollPage />} />
             <Route path="officials"     element={<AdminOfficialsPage />} />
+            <Route path="nominations"   element={<AdminNominationsPage />} />
           </Route>
 
           {/* Official portal routes (standalone — no admin layout) */}

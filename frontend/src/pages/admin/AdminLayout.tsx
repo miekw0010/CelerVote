@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
-import { Vote, BarChart3, Calendar, Users, CreditCard, Bell, Settings, LogOut, Menu, X, ChevronRight, Ticket, Shield, UserCog } from "lucide-react";
+import { Vote, BarChart3, Calendar, Users, CreditCard, Bell, Settings, LogOut, Menu, X, ChevronRight, Ticket, Shield, UserCog, Sparkles } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
 const sidebarItems = [
   { title: "Overview",      icon: BarChart3,  url: "/admin" },
   { title: "Events",        icon: Calendar,   url: "/admin/events" },
   { title: "Candidates",    icon: Users,      url: "/admin/candidates" },
+  { title: "Nominations",   icon: Sparkles,   url: "/admin/nominations" },
   { title: "Voters",        icon: Vote,       url: "/admin/voters" },
   { title: "Voter Roll",    icon: Users,      url: "/admin/voter-roll" },
   { title: "Fraud Flags",   icon: Shield,     url: "/admin/fraud" },

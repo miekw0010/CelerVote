@@ -20,9 +20,9 @@ const NAVY   = "#002856";
 const ORANGE = "#e87200";
 
 const features = [
-  { icon: Vote,        title: "Secure Ballot Casting",       desc: "Run SRC elections, school elections, and organizational ballots with end-to-end encrypted digital voting" },
-  { icon: Shield,      title: "Tamper-Proof Results",        desc: "Every vote is verified and protected against fraud — full audit trail for every election" },
-  { icon: BarChart3,   title: "Real-Time Vote Counting",     desc: "Watch election results update live as votes are tallied — no waiting until the end" },
+  { icon: Vote,        title: "Secure Ballot Casting",       desc: "Run SRC elections, school elections, and organizational ballots with end to end encrypted digital voting" },
+  { icon: Shield,      title: "Tamper Proof Results",        desc: "Every vote is verified and protected against fraud — full audit trail for every election" },
+  { icon: BarChart3,   title: "Real Time Vote Counting",     desc: "Watch election results update live as votes are tallied — no waiting until the end" },
   { icon: Fingerprint, title: "Voter Roll Management",       desc: "Upload your voter list via CSV, assign groups, manage voting codes — all in one place" },
   { icon: School,      title: "Vote From Any Device",        desc: "Voters participate from any smartphone, tablet, or computer — no app download needed" },
   { icon: Smartphone,  title: "Mobile Money Payments",       desc: "Sell event tickets and collect votes with MTN MoMo, Telecel Cash, and AirtelTigo Money" },
@@ -31,8 +31,8 @@ const features = [
 const steps = [
   { icon: FileCheck2, title: "Register to Vote",  desc: "Create your voter profile and verify your identity securely" },
   { icon: Eye,        title: "Review Candidates", desc: "Explore candidate profiles, manifestos, and track records" },
-  { icon: Vote,       title: "Cast Your Ballot",  desc: "Vote securely with encrypted end-to-end digital ballots" },
-  { icon: BarChart3,  title: "See Results Live",  desc: "Watch real-time results as every vote gets counted transparently" },
+  { icon: Vote,       title: "Cast Your Ballot",  desc: "Vote securely with encrypted end to end digital ballots" },
+  { icon: BarChart3,  title: "See Results Live",  desc: "Watch real time results as every vote gets counted transparently" },
 ];
 
 const stats = [
@@ -44,8 +44,8 @@ const stats = [
 
 const principles = [
   { icon: Scale,      title: "FAIR & TRANSPARENT", desc: "Every election follows strict democratic principles with a full audit trail — from first vote to final result" },
-  { icon: Lock,       title: "PRIVACY FIRST",      desc: "Your vote is your voice — completely anonymous, end-to-end encrypted, and protected from interference" },
-  { icon: BadgeCheck, title: "VERIFIED RESULTS",   desc: "Real-time verification ensures every election outcome is accurate, trustworthy, and impossible to dispute" },
+  { icon: Lock,       title: "PRIVACY FIRST",      desc: "Your vote is your voice — completely anonymous, end to end encrypted, and protected from interference" },
+  { icon: BadgeCheck, title: "VERIFIED RESULTS",   desc: "Real time verification ensures every election outcome is accurate, trustworthy, and impossible to dispute" },
 ];
 
 const carouselSlides = [
@@ -54,6 +54,121 @@ const carouselSlides = [
   { src: carousel3 },
   { src: carousel4 },
 ];
+
+// ── Events Section ───────────────────────────────────────────────────────────
+const typeEmoji: Record<string, string> = {
+  election:  "🗳️",
+  contest:   "🏆",
+  survey:    "📊",
+  live_show: "📺",
+};
+
+const EventsSection = () => {
+  const [votingEvents, setVotingEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API}/events/?status=active`)
+      .then(r => r.json())
+      .then(data => { setVotingEvents((data.results || data || []).slice(0, 4)); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  return (
+    <section className="py-20" style={{ background: 'white' }}>
+      <div className="container mx-auto px-4">
+        <div className="grid lg:grid-cols-2 gap-16 items-start">
+
+          {/* Left — event cards */}
+          <motion.div className="grid grid-cols-2 gap-4 lg:order-1 order-2" initial={{ opacity: 0, x: -40 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }}>
+            {loading ? (
+              [...Array(4)].map((_, i) => (
+                <div key={i} className="rounded-xl overflow-hidden animate-pulse border border-border/30">
+                  <div className="h-32 bg-muted" />
+                  <div className="p-3 space-y-2"><div className="h-3 bg-muted rounded w-3/4" /><div className="h-2 bg-muted rounded w-1/2" /></div>
+                </div>
+              ))
+            ) : votingEvents.length === 0 ? (
+              <div className="col-span-2 text-center py-12 text-muted-foreground">
+                <Vote className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                <p className="text-sm" style={{ fontFamily: "'Montserrat', sans-serif" }}>No active events yet.</p>
+                <Link to="/events" className="text-sm font-bold mt-2 inline-block" style={{ color: ORANGE }}>Browse all events →</Link>
+              </div>
+            ) : (
+              votingEvents.map((ev: any) => (
+                <motion.div key={ev.id} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
+                  <Link to={`/events/${ev.slug}`} className="block group">
+                    <div className="rounded-xl overflow-hidden border border-border/30 hover:shadow-lg transition-all duration-300 bg-white">
+                      <div className="relative h-32 overflow-hidden bg-muted">
+                        {ev.banner_image ? (
+                          <img src={ev.banner_image} alt={ev.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${NAVY}15, ${ORANGE}15)` }}>
+                            <span className="text-3xl opacity-30">{typeEmoji[ev.event_type] || "🗳️"}</span>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold text-white uppercase tracking-wide" style={{ background: '#dc2626' }}>
+                          <span className="relative flex h-1.5 w-1.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
+                          </span>
+                          Live
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <h4 className="font-bold text-sm mb-1 truncate" style={{ color: NAVY, fontFamily: "'Montserrat', sans-serif" }}>{ev.title}</h4>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          {typeEmoji[ev.event_type] || "🗳️"} <span className="capitalize">{ev.event_type?.replace('_', ' ')}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </motion.div>
+              ))
+            )}
+          </motion.div>
+
+          {/* Right — text */}
+          <motion.div className="lg:order-2 order-1" initial={{ opacity: 0, x: 40 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }}>
+            <h2 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: 'clamp(2rem, 5vw, 3.5rem)', lineHeight: 1.05, color: '#111', marginBottom: '0.2em' }}>
+              Active Elections
+            </h2>
+            <h2 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: 'clamp(1.5rem, 3.5vw, 2.5rem)', lineHeight: 1.05, color: ORANGE, marginBottom: '1.2rem' }}>
+              & Contests
+            </h2>
+            <p style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 400, color: '#444', lineHeight: 1.8, marginBottom: '1.8rem', fontSize: '1rem' }}>
+              Browse elections, contests, surveys, and live shows currently open for voting.
+              Cast your vote securely in just a few taps, from anywhere.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', marginBottom: '2rem' }}>
+              {["Secure, verified voting for every event", "Live results as votes come in", "Vote from any device, anywhere"].map((perk) => (
+                <div key={perk} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <CheckCircle2 style={{ width: 20, height: 20, color: ORANGE, flexShrink: 0 }} />
+                  <span style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 600, color: '#222', fontSize: '0.9rem' }}>{perk}</span>
+                </div>
+              ))}
+            </div>
+            <Link to="/events">
+              <button style={{
+                background: ORANGE, color: 'white', border: 'none', cursor: 'pointer',
+                padding: '1rem 2rem', fontFamily: "'Montserrat', sans-serif",
+                fontWeight: 900, fontSize: '1rem', letterSpacing: '0.06em',
+                textTransform: 'uppercase', borderRadius: '4px', transition: 'all 0.2s',
+              }}
+                onMouseEnter={e => { (e.target as HTMLElement).style.background = '#d06800'; }}
+                onMouseLeave={e => { (e.target as HTMLElement).style.background = ORANGE; }}
+              >
+                VIEW ALL EVENTS
+              </button>
+            </Link>
+          </motion.div>
+
+        </div>
+      </div>
+    </section>
+  );
+};
 
 // ── Tickets Section ───────────────────────────────────────────────────────────
 const TicketsSection = () => {
@@ -199,13 +314,13 @@ const Index = () => {
      {/* ═══ HERO ═══ */}
 <section ref={heroRef} className="relative h-screen min-h-[600px] flex items-center overflow-hidden">
 
-  <AnimatePresence mode="wait">
+  <AnimatePresence initial={false}>
     <motion.div
       key={currentSlide}
-      initial={{ opacity: 0, scale: 1.04 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 1.2, ease: "easeInOut" }}
+      initial={{ x: "6%", opacity: 0.4 }}
+      animate={{ x: "0%", opacity: 1 }}
+      exit={{ x: "-6%", opacity: 0 }}
+      transition={{ duration: 1, ease: [0.45, 0, 0.15, 1] }}
       style={{ position: 'absolute', inset: 0, zIndex: 0 }}
     >
       <img
@@ -216,7 +331,7 @@ const Index = () => {
           height: '100%',
           objectFit: 'cover',
           objectPosition: 'center',
-          filter: 'brightness(0.7) blur(1px)'
+          filter: 'brightness(0.7)'
         }}
       />
     </motion.div>
@@ -329,6 +444,9 @@ const Index = () => {
           </div>
         </div>
       </section>
+
+      {/* ═══ EVENTS ═══ */}
+      <EventsSection />
 
       {/* ═══ TICKETS ═══ */}
       <TicketsSection />
@@ -464,10 +582,10 @@ const Index = () => {
                 EVERY VOTE IS PROTECTED
               </h2>
               <p style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 400, color: 'rgba(255,255,255,0.75)', lineHeight: 1.8, marginBottom: '1.75rem', fontSize: '0.95rem', maxWidth: '520px' }}>
-                Our military-grade encryption ensures your ballot remains anonymous and tamper-proof. Trust the process, trust the results.
+                Our military grade encryption ensures your ballot remains anonymous and tamper proof. Trust the process, trust the results.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                {["End-to-end ballot encryption", "Real-time fraud detection & prevention", "Multi-factor voter authentication", "Complete audit trail for every election"].map((item) => (
+                {["End-to-end ballot encryption", "Real time fraud detection & prevention", "Multi factor voter authentication", "Complete audit trail for every election"].map((item) => (
                   <div key={item} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <CheckCircle2 style={{ width: 18, height: 18, color: ORANGE, flexShrink: 0 }} />
                     <span style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 500, fontSize: '0.875rem', color: 'rgba(255,255,255,0.85)' }}>{item}</span>

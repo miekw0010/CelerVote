@@ -17,7 +17,7 @@ def generate_candidate_code():
     chars = (string.ascii_uppercase + string.digits).translate(
         str.maketrans('', '', '01OILZ')
     )
-    return ''.join(random.choices(chars, k=6))
+    return ''.join(random.choices(chars, k=4))
 
 
 class Event(models.Model):
@@ -69,6 +69,10 @@ class Event(models.Model):
     is_paid         = models.BooleanField(default=False)
     price_per_vote  = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     currency        = models.CharField(max_length=5, default='GHS')
+    nominations_open = models.BooleanField(
+        default=True,
+        help_text='Whether this event currently accepts public self-nominations.'
+    )
     show_live_results  = models.BooleanField(default=True)
     results_visible    = models.BooleanField(default=False)
     results_published  = models.BooleanField(default=False)
@@ -188,7 +192,9 @@ class Category(models.Model):
 class Candidate(models.Model):
     id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     category    = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='candidates')
-    name        = models.CharField(max_length=200)
+    name        = models.CharField(max_length=200, help_text='Stage name — shown publicly on the ballot.')
+    full_name   = models.CharField(max_length=200, blank=True, help_text='Legal/full name — internal use only.')
+    phone       = models.CharField(max_length=30, blank=True, help_text='Contact number — used for SMS notifications.')
     description = models.TextField(blank=True)
     photo       = models.ImageField(upload_to='candidates/', null=True, blank=True, storage=MediaCloudinaryStorage())
     video_url   = models.URLField(blank=True)
@@ -199,7 +205,7 @@ class Candidate(models.Model):
     extra_info  = models.JSONField(default=dict, blank=True)
     code        = models.CharField(
                     max_length=6, blank=True, unique=True,
-                    help_text='Auto-generated 6-char unique vote code e.g. AB3X9K'
+                    help_text='Auto-generated 4-char unique contestant code e.g. AB3X'
                   )
     created_at  = models.DateTimeField(auto_now_add=True)
 
@@ -220,7 +226,57 @@ class Candidate(models.Model):
             str.maketrans('', '', '01OILZ')
         )
         for _ in range(50):
-            code = ''.join(random.choices(chars, k=6))
+            code = ''.join(random.choices(chars, k=4))
             if not Candidate.objects.filter(code=code).exists():
                 return code
         raise ValueError('Could not generate unique candidate code after 50 attempts')
+
+
+class Nomination(models.Model):
+    """
+    A public self-nomination submitted via the 'Nominate' flow.
+    Sits in Pending status until an admin or event official reviews it.
+    On approval, a Candidate (contestant) is auto-created from it.
+    """
+    class Status(models.TextChoices):
+        PENDING  = 'pending',  'Pending'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+
+    id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event        = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='nominations')
+    category     = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='nominations')
+
+    full_name    = models.CharField(max_length=200)
+    stage_name   = models.CharField(max_length=200)
+    phone        = models.CharField(max_length=30)
+    photo        = models.ImageField(upload_to='nominations/', null=True, blank=True, storage=MediaCloudinaryStorage())
+    reason       = models.TextField(blank=True, help_text='Optional — reason for nomination.')
+
+    status       = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    rejection_reason = models.TextField(blank=True)
+
+    candidate    = models.ForeignKey(
+        Candidate, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='nomination', help_text='Set automatically once approved.'
+    )
+
+    reviewed_by_admin    = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reviewed_nominations'
+    )
+    reviewed_by_official  = models.ForeignKey(
+        'officials.Official', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reviewed_nominations'
+    )
+    reviewed_at  = models.DateTimeField(null=True, blank=True)
+
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'nominations'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.stage_name} → {self.event.title} ({self.status})'

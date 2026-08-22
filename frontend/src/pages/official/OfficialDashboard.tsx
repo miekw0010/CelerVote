@@ -7,12 +7,13 @@ import {
   Upload, Plus, Download, RefreshCw, Trophy, TrendingUp,
   Wallet, ArrowDownToLine, CheckCheck, X, UserPlus,
   ChevronRight, ScanLine, PieChart, ArrowUpFromLine,
-  Layers, Printer, Camera, CameraOff, BarChart
+  Layers, Printer, Camera, CameraOff, BarChart, Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { officialsApi } from "@/lib/api";
+import { officialsApi, nominationsApi } from "@/lib/api";
+import { NominationReviewList, Nomination } from "@/components/NominationReviewList";
 import {
   BarChart as RBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart as RPieChart, Pie, Cell, Legend,
@@ -237,8 +238,8 @@ function TicketDashboard({ profile, stats, ticketRevStats, onWithdrawRequest, da
         loadTickets();
       }
     } catch (e: any) {
-      setLastResult({ success: false, error: e?.message || "Check-in failed." });
-      toast({ title: "Check-in failed", description: e?.message, variant: "destructive" });
+      setLastResult({ success: false, error: e?.message || "Check in failed." });
+      toast({ title: "Check in failed", description: e?.message, variant: "destructive" });
     } finally {
       setScanning(false);
       setTicketCode("");
@@ -282,7 +283,7 @@ function TicketDashboard({ profile, stats, ticketRevStats, onWithdrawRequest, da
   );
 
   const tabs = [
-    { key: "checkin",  label: "Check-in",  icon: ScanLine },
+    { key: "checkin",  label: "Check in",  icon: ScanLine },
     ...(hasPay ? [{ key: "earnings", label: "Earnings", icon: Wallet }] : []),
   ];
 
@@ -312,7 +313,7 @@ function TicketDashboard({ profile, stats, ticketRevStats, onWithdrawRequest, da
 
       <AnimatePresence mode="wait">
 
-        {/* Check-in tab */}
+        {/* Check in tab */}
         {activeTab === "checkin" && (
           <motion.div key="checkin" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-6">
             {/* Scanner */}
@@ -911,7 +912,7 @@ function ResultsView({ results, isOrg }: { results: any[]; isOrg: boolean }) {
 // ── Election Dashboard ────────────────────────────────────────────────────────
 function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any }) {
   const { toast }                     = useToast();
-  const [activeTab, setActiveTab]     = useState<"overview" | "voters" | "results" | "withdraw">("overview");
+  const [activeTab, setActiveTab]     = useState<"overview" | "voters" | "results" | "withdraw" | "nominations">("overview");
   const [withdrawAmount, setWithdrawAmount]             = useState("");
   const [withdrawNote, setWithdrawNote]                 = useState("");
   const [withdrawPaymentMethod, setWithdrawPaymentMethod] = useState("");
@@ -929,14 +930,58 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
   const [addingVoter, setAddingVoter] = useState(false);
   const csvRef = useRef<HTMLInputElement>(null)
 
+  const [nominations, setNominations]           = useState<Nomination[]>([]);
+  const [nominationsLoading, setNominationsLoading] = useState(false);
+  const [nomStatusFilter, setNomStatusFilter]   = useState("pending");
+  const [nomCategories, setNomCategories]       = useState<{ id: string; name: string }[]>([]);
+  const [nomToggling, setNomToggling]           = useState(false);
+  const [nominationsOpenOverride, setNominationsOpenOverride] = useState<boolean | null>(null);
+
   const rev     = dashData?.revenue_stats;
   const roll    = dashData?.voter_roll_stats;
   const results = dashData?.results || [];
   const isPaid  = !!rev;
   const isOrg   = !!roll;
+  const nominationsOpen = nominationsOpenOverride ?? (dashData?.nominations_open ?? true);
 
   useEffect(() => { if (activeTab === "voters" && isOrg) loadVoters(); }, [activeTab, voterSearch, voterStatus]);
   useEffect(() => { setWithdrawals(dashData?.withdrawals || []); }, [dashData]);
+  useEffect(() => {
+    setNomCategories((results || []).map((r: any) => ({ id: r.category_id, name: r.category_name })));
+  }, [dashData]);
+  useEffect(() => { if (activeTab === "nominations") loadNominations(); }, [activeTab, nomStatusFilter]);
+
+  const loadNominations = async () => {
+    setNominationsLoading(true);
+    try {
+      const data = await nominationsApi.officialList(nomStatusFilter);
+      setNominations(data);
+    } catch { toast({ title: "Failed to load nominations", variant: "destructive" }); }
+    finally { setNominationsLoading(false); }
+  };
+
+  const handleToggleNominations = async () => {
+    setNomToggling(true);
+    try {
+      const res = await nominationsApi.officialToggle(!nominationsOpen);
+      setNominationsOpenOverride(res.nominations_open);
+      toast({ title: res.nominations_open ? "Nominations reopened ✅" : "Nominations closed" });
+    } catch (e: any) { toast({ title: "Failed to update", description: e?.message, variant: "destructive" }); }
+    finally { setNomToggling(false); }
+  };
+
+  const handleNominationEdit = async (id: string, data: Record<string, any>) => {
+    await nominationsApi.officialUpdate(id, {
+      full_name: data.full_name, stage_name: data.stage_name, phone: data.phone,
+      reason: data.reason, category_id: data.category_id,
+    });
+    loadNominations();
+  };
+
+  const handleNominationAction = async (id: string, action: "approve" | "reject", rejectionReason?: string) => {
+    await nominationsApi.officialAction(id, action, rejectionReason);
+    loadNominations();
+  };
 
   const loadVoters = async () => {
     setVotersLoading(true);
@@ -993,6 +1038,7 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
   const tabs = [
     { key: "overview", label: "Overview",   icon: BarChart2 },
     ...(isOrg  ? [{ key: "voters",   label: "Voter Roll", icon: Users   }] : []),
+    { key: "nominations", label: "Nominations", icon: Sparkles },
     { key: "results",  label: "Results",    icon: Trophy    },
     ...(isPaid ? [{ key: "withdraw", label: "Earnings",   icon: Wallet  }] : []),
   ];
@@ -1119,6 +1165,37 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
         {activeTab === "results" && (
           <motion.div key="results" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             <ResultsView results={results} isOrg={isOrg} />
+          </motion.div>
+        )}
+
+        {activeTab === "nominations" && (
+          <motion.div key="nominations" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <div className={`flex items-center justify-between gap-3 p-4 rounded-2xl border mb-4 ${
+              nominationsOpen ? "bg-green-500/5 border-green-500/20" : "bg-destructive/5 border-destructive/20"
+            }`}>
+              <div>
+                <p className="text-sm font-semibold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" /> Nominations are currently {nominationsOpen ? "open" : "closed"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {nominationsOpen ? "People can submit nominations for this event." : "New nomination submissions are blocked with a closed message."}
+                </p>
+              </div>
+              <Button size="sm" variant={nominationsOpen ? "outline" : "default"} onClick={handleToggleNominations} disabled={nomToggling}
+                className={nominationsOpen ? "text-destructive hover:bg-destructive/10 flex-shrink-0" : "bg-green-600 hover:bg-green-700 text-white flex-shrink-0"}>
+                {nomToggling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : nominationsOpen ? "Close Nominations" : "Reopen Nominations"}
+              </Button>
+            </div>
+            <NominationReviewList
+              nominations={nominations}
+              loading={nominationsLoading}
+              categories={nomCategories}
+              statusFilter={nomStatusFilter}
+              onStatusFilterChange={setNomStatusFilter}
+              onEdit={handleNominationEdit}
+              onAction={handleNominationAction}
+              emptyLabel="No nominations in this status yet."
+            />
           </motion.div>
         )}
 

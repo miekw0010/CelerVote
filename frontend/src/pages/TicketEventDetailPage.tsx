@@ -577,7 +577,7 @@ ${blocks}
                         onBlur={e => setBuyerPhone(normalizePhone(e.target.value))}
                         placeholder="0241234567 or +233241234567"
                         className={errors.phone ? "border-destructive" : ""} />
-                      <p className="text-xs text-muted-foreground mt-1">Auto-formatted to international format on submit</p>
+                      <p className="text-xs text-muted-foreground mt-1">Auto formatted to international format on submit</p>
                       {errors.phone && <p className="text-destructive text-xs mt-1">{errors.phone}</p>}
                     </div>
                     <div>

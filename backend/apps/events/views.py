@@ -7,14 +7,16 @@ from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 import django_filters
 
-from .models import Event, Category, Candidate
+from .models import Event, Category, Candidate, Nomination
 from .serializers import (
     EventListSerializer, EventListPublicSerializer,
     EventDetailSerializer, EventDetailPublicSerializer,
     EventCreateSerializer, EventUpdateSerializer,
     CategorySerializer, CategoryWriteSerializer,
-    CandidateSerializer, CandidateWriteSerializer
+    CandidateSerializer, CandidateWriteSerializer,
+    NominatableEventSerializer, NominationCreateSerializer, NominationSerializer,
 )
+from . import services as nomination_services
 
 
 def auto_expire_events(queryset):
@@ -227,7 +229,129 @@ class CandidateDetailView(generics.RetrieveUpdateDestroyAPIView):
         return CandidateWriteSerializer if self.request.method in ['PUT', 'PATCH'] else CandidateSerializer
 
     def get_queryset(self):
-        return Candidate.objects.filter(category__id=self.kwargs['cat_id'])
+        # Scoped to the event (not the cat_id in the URL) so a PATCH can
+        # reassign a contestant to a different category within the same event.
+        return Candidate.objects.filter(category__event__slug=self.kwargs['slug'])
+
+
+# ── Nominations — public ─────────────────────────────────────────────────────
+
+class NominatableEventsView(generics.ListAPIView):
+    """
+    Public: events that could accept self-nominations (active/scheduled),
+    each with its selectable categories nested and its `nominations_open`
+    flag — powers the 'Nominate' wizard in one call. Closed events are
+    still listed (marked closed) so the person gets a clear "nominations
+    are currently closed" message instead of the event just disappearing.
+    """
+    permission_classes = [AllowAny]
+    serializer_class    = NominatableEventSerializer
+    pagination_class    = None
+
+    def get_queryset(self):
+        qs = Event.objects.filter(
+            status__in=[Event.Status.ACTIVE, Event.Status.SCHEDULED],
+        ).prefetch_related('categories')
+        auto_expire_events(qs)
+        return qs
+
+
+class PublicNominationCreateView(APIView):
+    """Public: submit a self-nomination for an event. Enters as Pending."""
+    permission_classes = [AllowAny]
+    parser_classes      = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request, slug):
+        event = get_object_or_404(Event, slug=slug)
+        if not event.nominations_open:
+            return Response({'error': 'This event is not currently accepting nominations.'}, status=400)
+
+        serializer = NominationCreateSerializer(data=request.data, context={'event': event})
+        serializer.is_valid(raise_exception=True)
+        nomination = serializer.save(event=event)
+
+        nomination_services.send_nomination_received_sms(nomination)
+
+        return Response(
+            {
+                'success': True,
+                'message': 'Your nomination has been submitted and is pending review.',
+                'id': str(nomination.id),
+            },
+            status=201,
+        )
+
+
+# ── Nominations — admin ───────────────────────────────────────────────────────
+
+class AdminNominationListView(APIView):
+    """Admin: list nominations for an event, optionally filtered by status."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, slug):
+        event = get_object_or_404(Event, slug=slug)
+        if event.organizer != request.user and request.user.role != 'superadmin':
+            return Response({'error': 'Permission denied.'}, status=403)
+        status_filter = request.query_params.get('status', 'pending')
+        qs = nomination_services.list_nominations(event, status=status_filter or None)
+        return Response(NominationSerializer(qs, many=True).data)
+
+
+class AdminNominationDetailView(APIView):
+    """Admin: view or edit a single pending nomination (info, category reassignment)."""
+    permission_classes = [IsAuthenticated]
+    parser_classes      = [MultiPartParser, FormParser, JSONParser]
+
+    def _get(self, request, slug, id):
+        event = get_object_or_404(Event, slug=slug)
+        if event.organizer != request.user and request.user.role != 'superadmin':
+            return None, Response({'error': 'Permission denied.'}, status=403)
+        nomination = get_object_or_404(Nomination, id=id, event=event)
+        return nomination, None
+
+    def get(self, request, slug, id):
+        nomination, err = self._get(request, slug, id)
+        if err: return err
+        return Response(NominationSerializer(nomination).data)
+
+    def patch(self, request, slug, id):
+        nomination, err = self._get(request, slug, id)
+        if err: return err
+        try:
+            nomination_services.update_nomination(nomination, request.data)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+        return Response(NominationSerializer(nomination).data)
+
+
+class AdminNominationActionView(APIView):
+    """Admin: approve or reject a pending nomination."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, slug, id):
+        event = get_object_or_404(Event, slug=slug)
+        if event.organizer != request.user and request.user.role != 'superadmin':
+            return Response({'error': 'Permission denied.'}, status=403)
+        nomination = get_object_or_404(Nomination, id=id, event=event)
+
+        action = request.data.get('action', '').lower()
+        if action not in ('approve', 'reject'):
+            return Response({'error': 'action must be "approve" or "reject".'}, status=400)
+
+        try:
+            if action == 'approve':
+                nomination, candidate = nomination_services.approve_nomination(
+                    nomination, reviewer_admin=request.user
+                )
+            else:
+                nomination = nomination_services.reject_nomination(
+                    nomination, reviewer_admin=request.user,
+                    reason=request.data.get('rejection_reason', ''),
+                )
+        except ValueError as e:
+            return Response({'error': str(e)}, status=400)
+
+        return Response(NominationSerializer(nomination).data)
 
 
 class ExportResultsView(APIView):

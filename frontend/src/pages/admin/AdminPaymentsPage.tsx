@@ -282,7 +282,7 @@ const AdminPaymentsPage = () => {
         <div className="glass-card p-12 text-center text-muted-foreground">
           <CreditCard className="w-12 h-12 mx-auto mb-4 opacity-30" />
           <p className="mb-2">No paid events yet.</p>
-          <p className="text-xs">Create a pay-per-vote event to start tracking payments.</p>
+          <p className="text-xs">Create a pay per vote event to start tracking payments.</p>
         </div>
       ) : (
         <div className="grid gap-3">

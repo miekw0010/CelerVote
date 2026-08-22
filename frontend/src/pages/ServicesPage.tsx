@@ -24,17 +24,17 @@ const services = [
   {
     icon: Vote,
     title: "Host an Election or Voting Event",
-    desc: "Want to run a student election, awards show, or community poll? We set up everything for you — categories, candidates, voting pages, real-time results, and security. You just share the link.",
+    desc: "Want to run a student election, awards show, or community poll? We set up everything for you — categories, candidates, voting pages, real time results, and security. You just share the link.",
     color: "from-secondary to-accent",
     bg: "bg-secondary/5 border-secondary/20",
-    perks: ["Custom branded voting page", "Real-time live results dashboard", "Fraud detection & vote security", "Free & paid voting support", "Results export (PDF & CSV)"],
+    perks: ["Custom branded voting page", "Real time live results dashboard", "Fraud detection & vote security", "Free & paid voting support", "Results export (PDF & CSV)"],
     waMsg: "Hi! I'd like to host a voting/election event on CelerVote. Can you help me set it up?",
     emailSub: "Enquiry: Host a Voting Event on CelerVote",
   },
   {
     icon: Palette,
     title: "Graphic Design — Posters & Flyers",
-    desc: "Need eye-catching visuals for your event? We design professional posters, flyers, social media graphics, and banners that get attention and drive engagement.",
+    desc: "Need eye catching visuals for your event? We design professional posters, flyers, social media graphics, and banners that get attention and drive engagement.",
     color: "from-pink-500 to-purple-500",
     bg: "bg-pink-500/5 border-pink-500/20",
     perks: ["Event posters & flyers", "Social media graphics", "Voting ballot designs", "Award certificate templates", "Fast turnaround"],
@@ -44,10 +44,10 @@ const services = [
   {
     icon: Ticket,
     title: "Event Ticketing Setup",
-    desc: "Sell tickets to your event with ease. We set up your ticketing page with multiple tiers, QR code delivery, mobile money & card payments, and door check-in scanning.",
+    desc: "Sell tickets to your event with ease. We set up your ticketing page with multiple tiers, QR code delivery, mobile money & card payments, and door check in scanning.",
     color: "from-yellow-500 to-orange-500",
     bg: "bg-yellow-500/5 border-yellow-500/20",
-    perks: ["Multiple ticket tiers", "Instant QR code delivery", "Mobile Money & Card payments", "Door check-in scanner", "Sales dashboard & reports"],
+    perks: ["Multiple ticket tiers", "Instant QR code delivery", "Mobile Money & Card payments", "Door check in scanner", "Sales dashboard & reports"],
     waMsg: "Hi! I'd like to set up ticketing for my event on CelerVote. Can you help?",
     emailSub: "Enquiry: Event Ticketing Setup",
   },
@@ -170,7 +170,7 @@ export default function ServicesPage() {
           </motion.div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
-              { icon: Shield,         title: "Trusted & Secure",  desc: "Military-grade encryption on all voting and payment data.",       color: "text-secondary" },
+              { icon: Shield,         title: "Trusted & Secure",  desc: "Military grade encryption on all voting and payment data.",       color: "text-secondary" },
               { icon: Zap,            title: "Fast Turnaround",   desc: "We move quickly so your event setup is ready when you need it.",  color: "text-yellow-400" },
               { icon: Star,           title: "Quality Service",   desc: "Professional results delivered with attention to every detail.",   color: "text-pink-400" },
               { icon: MessageCircle,  title: "Always Available",  desc: "Reach us on WhatsApp any time — we respond fast.",               color: "text-green-400" },

@@ -72,6 +72,13 @@ const AdminCandidatesPage = () => {
   const [catLoading, setCatLoading]           = useState(false);
   const [newGroupName, setNewGroupName]       = useState("");
   const [groupLoading, setGroupLoading]       = useState(false);
+  const [editOpen, setEditOpen]               = useState(false);
+  const [editingCand, setEditingCand]         = useState<any>(null);
+  const [editForm, setEditForm]               = useState({ name: "", category: "" });
+  const [editPreview, setEditPreview]         = useState<string | null>(null);
+  const [editPhotoFile, setEditPhotoFile]     = useState<File | null>(null);
+  const [editSubmitting, setEditSubmitting]   = useState(false);
+  const editFileRef                           = useRef<HTMLInputElement>(null);
 
   const { ask: confirm, dialog: confirmDialog } = useConfirm();
   const selectedEvent  = events.find((e: any) => e.slug === selectedSlug);
@@ -266,6 +273,43 @@ const AdminCandidatesPage = () => {
     if (fileRef.current) fileRef.current.value = "";
   };
 
+  const openEditModal = (c: any) => {
+    setEditingCand(c);
+    setEditForm({ name: c.name, category: selectedCatId });
+    setEditPreview(c.photo || null);
+    setEditPhotoFile(null);
+    setEditOpen(true);
+  };
+
+  const handleEditPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    compressImage(file).then(c => { setEditPhotoFile(c); setEditPreview(URL.createObjectURL(c)); });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingCand || !editForm.name.trim()) return;
+    setEditSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.append("name", editForm.name.trim());
+      if (editForm.category && editForm.category !== selectedCatId) fd.append("category", editForm.category);
+      if (editPhotoFile) fd.append("photo", editPhotoFile);
+      const res = await fetch(`${API}/events/${selectedSlug}/categories/${selectedCatId}/candidates/${editingCand.id}/`,
+        { method: "PATCH", headers: { Authorization: `Bearer ${getToken()}` }, body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(JSON.stringify(data));
+      toast({ title: `${candidateLabel} updated ✅` });
+      setEditOpen(false);
+      // If category changed, the contestant moves out of this list; otherwise refresh in place.
+      if (editForm.category && editForm.category !== selectedCatId) {
+        setCandidates(prev => prev.filter((c: any) => c.id !== editingCand.id));
+      } else {
+        setCandidates(prev => prev.map((c: any) => c.id === editingCand.id ? { ...c, ...data } : c));
+      }
+    } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
+    finally { setEditSubmitting(false); }
+  };
+
   // ── Event list ─────────────────────────────────────────────────────────────
   if (!selectedSlug) return (
     <div className="p-4 md:p-6">
@@ -426,7 +470,7 @@ const AdminCandidatesPage = () => {
                   <label className="flex items-center gap-2.5 p-2.5 rounded-lg border border-border cursor-pointer hover:border-secondary/40">
                     <input type="radio" checked={!catIsGlobal} onChange={() => setCatIsGlobal(false)} />
                     <Tag className="w-4 h-4 text-secondary" />
-                    <div><p className="text-sm font-medium">👥 Group-specific</p><p className="text-xs text-muted-foreground">Each selected group gets its own independent copy</p></div>
+                    <div><p className="text-sm font-medium">👥 Group specific</p><p className="text-xs text-muted-foreground">Each selected group gets its own independent copy</p></div>
                   </label>
                 </div>
                 {!catIsGlobal && (
@@ -521,6 +565,10 @@ const AdminCandidatesPage = () => {
                  </div>
                  <div className="flex items-center gap-2">
                    <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-muted">{c.vote_count || 0} {isSurvey ? "responses" : "votes"}</span>
+                   {!isSurvey && (
+                     <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                       onClick={() => openEditModal(c)} title="Edit"><Edit2 className="w-3.5 h-3.5" /></Button>
+                   )}
                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                      onClick={() => handleDeleteCandidate(c.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                  </div>
@@ -534,7 +582,7 @@ const AdminCandidatesPage = () => {
         <DialogContent className="max-w-sm">
           <DialogHeader>
               <DialogTitle>Add {candidateLabel}</DialogTitle>
-              <p className="text-xs text-muted-foreground mt-1">A unique 6-digit vote code will be auto-generated on save.</p>
+              <p className="text-xs text-muted-foreground mt-1">A unique 4-character vote code will be auto generated on save.</p>
             </DialogHeader>
           <div className="space-y-3 mt-2">
             {!isSurvey && (
@@ -562,6 +610,50 @@ const AdminCandidatesPage = () => {
             {!isSurvey && <div><label className="text-sm font-medium mb-1 block">Display Order</label><Input type="number" value={form.order} onChange={e => setForm(f => ({ ...f, order: e.target.value }))} /></div>}
             <Button className="w-full" onClick={handleAddCandidate} disabled={submitting}>
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : `Add ${candidateLabel}`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Candidate Modal ── */}
+      <Dialog open={editOpen} onOpenChange={o => { setEditOpen(o); if (!o) { setEditingCand(null); setEditPreview(null); setEditPhotoFile(null); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit {candidateLabel}</DialogTitle>
+            <p className="text-xs text-muted-foreground mt-1">The contestant's code stays the same after editing.</p>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Photo</label>
+              <div onClick={() => editFileRef.current?.click()}
+                className="relative w-full h-32 rounded-lg border-2 border-dashed border-border hover:border-secondary cursor-pointer flex items-center justify-center overflow-hidden bg-muted/30">
+                {editPreview ? <><img src={editPreview} className="w-full h-full object-cover" />
+                  <button onClick={e => { e.stopPropagation(); setEditPreview(null); setEditPhotoFile(null); if (editFileRef.current) editFileRef.current.value = ""; }}
+                    className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white"><X className="w-3 h-3" /></button></>
+                 : <div className="text-center"><ImageIcon className="w-8 h-8 mx-auto mb-1 text-muted-foreground opacity-50" /><p className="text-xs text-muted-foreground">Click to upload</p></div>}
+              </div>
+              <input ref={editFileRef} type="file" accept="image/*" className="hidden" onChange={handleEditPhotoChange} />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Stage Name *</label>
+              <Input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            {categories.length > 1 && (
+              <div>
+                <label className="text-sm font-medium mb-1 block">Category</label>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((cat: any) => (
+                    <button key={cat.id} onClick={() => setEditForm(f => ({ ...f, category: cat.id }))}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                        editForm.category === cat.id ? "bg-secondary/10 border-secondary/40 text-secondary" : "border-border text-muted-foreground hover:border-secondary/30"
+                      }`}>{cat.name}</button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Moving to another category keeps their code and votes.</p>
+              </div>
+            )}
+            <Button className="w-full" onClick={handleSaveEdit} disabled={editSubmitting}>
+              {editSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Changes"}
             </Button>
           </div>
         </DialogContent>

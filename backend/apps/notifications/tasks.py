@@ -296,7 +296,7 @@ def send_vote_confirmation_task(self, email: str, event_title: str, candidate_na
             </table>
           </div>
           <p style="color:{BRAND_GRAY};font-size:13px;margin:0;">
-            Your vote is encrypted and tamper-proof. Thank you for participating!
+            Your vote is encrypted and tamper proof. Thank you for participating!
           </p>
         """
 

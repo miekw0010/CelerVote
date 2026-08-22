@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, Trash2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AlertTriangle } from "lucide-react";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -14,6 +16,12 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
+// Built on Radix's own AlertDialog (not a hand-rolled overlay div) so it
+// correctly stacks when opened from inside another open Dialog — Radix
+// tracks its own nested dismissible layers, which a plain fixed-position
+// div can't participate in. That mismatch was what made the confirm
+// dialog visually appear but not be clickable until the underlying
+// Dialog's overlay was interacted with first.
 export function ConfirmDialog({
   open, title, message, confirmLabel = "Confirm", cancelLabel = "Cancel",
   variant = "danger", onConfirm, onCancel,
@@ -25,38 +33,21 @@ export function ConfirmDialog({
   }[variant];
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        >
-          <motion.div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
-          <motion.div
-            className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl overflow-hidden z-10"
-            initial={{ scale: 0.92, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.92, y: 16 }}
-            transition={{ type: "spring", stiffness: 300, damping: 25 }}
-          >
-            <div className="p-6">
-              <div className={`w-12 h-12 rounded-full ${colors.bg} border ${colors.border} flex items-center justify-center mx-auto mb-4`}>
-                <AlertTriangle className={`w-6 h-6 ${colors.icon}`} />
-              </div>
-              <h3 className="text-base font-bold text-center mb-2">{title}</h3>
-              <p className="text-sm text-muted-foreground text-center leading-relaxed">{message}</p>
-            </div>
-            <div className="flex gap-3 px-6 pb-6">
-              <Button variant="outline" className="flex-1" onClick={onCancel}>{cancelLabel}</Button>
-              <button
-                onClick={onConfirm}
-                className={`flex-1 h-10 rounded-xl text-sm font-semibold transition-all ${colors.btn}`}
-              >
-                {confirmLabel}
-              </button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <AlertDialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+      <AlertDialogContent className="max-w-sm">
+        <AlertDialogHeader>
+          <div className={`w-12 h-12 rounded-full ${colors.bg} border ${colors.border} flex items-center justify-center mx-auto mb-2`}>
+            <AlertTriangle className={`w-6 h-6 ${colors.icon}`} />
+          </div>
+          <AlertDialogTitle className="text-center">{title}</AlertDialogTitle>
+          <AlertDialogDescription className="text-center leading-relaxed">{message}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="sm:justify-center gap-3">
+          <AlertDialogCancel onClick={onCancel} className="flex-1">{cancelLabel}</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm} className={`flex-1 ${colors.btn}`}>{confirmLabel}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
