@@ -3,8 +3,8 @@ import { motion, useScroll, useTransform, useReducedMotion, AnimatePresence } fr
 import { Link } from "react-router-dom";
 import {
   Vote, Shield, BarChart3, School, Zap,
-  CheckCircle2, Lock, Smartphone,
-  Eye, Fingerprint, Scale, BadgeCheck, FileCheck2, Ticket, Calendar, MapPin, ChevronRight,
+  CheckCircle2, Lock, Smartphone, Users,
+  Eye, Fingerprint, Scale, BadgeCheck, FileCheck2, Calendar, ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/Navbar";
@@ -70,229 +70,111 @@ const EventsSection = () => {
   useEffect(() => {
     fetch(`${API}/events/?status=active`)
       .then(r => r.json())
-      .then(data => { setVotingEvents((data.results || data || []).slice(0, 4)); setLoading(false); })
+      .then(data => { setVotingEvents((data.results || data || []).slice(0, 6)); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
   return (
     <section className="py-20" style={{ background: 'white' }}>
       <div className="container mx-auto px-4">
-        <div className="grid lg:grid-cols-2 gap-16 items-start">
 
-          {/* Left — event cards */}
-          <motion.div className="grid grid-cols-2 gap-4 lg:order-1 order-2" initial={{ opacity: 0, x: -40 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }}>
-            {loading ? (
-              [...Array(4)].map((_, i) => (
-                <div key={i} className="rounded-xl overflow-hidden animate-pulse border border-border/30">
-                  <div className="h-32 bg-muted" />
-                  <div className="p-3 space-y-2"><div className="h-3 bg-muted rounded w-3/4" /><div className="h-2 bg-muted rounded w-1/2" /></div>
-                </div>
-              ))
-            ) : votingEvents.length === 0 ? (
-              <div className="col-span-2 text-center py-12 text-muted-foreground">
-                <Vote className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p className="text-sm" style={{ fontFamily: "'Montserrat', sans-serif" }}>No active events yet.</p>
-                <Link to="/events" className="text-sm font-bold mt-2 inline-block" style={{ color: ORANGE }}>Browse all events →</Link>
+        <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }}>
+          <h2 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: 'clamp(1.8rem, 4vw, 2.75rem)', lineHeight: 1.1, color: '#111' }}>
+            Active <span style={{ color: ORANGE }}>Elections &amp; Contests</span>
+          </h2>
+        </motion.div>
+
+        {loading ? (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="rounded-2xl overflow-hidden animate-pulse border border-border/30">
+                <div className="h-44 bg-muted" />
+                <div className="p-4 space-y-2"><div className="h-3 bg-muted rounded w-3/4" /><div className="h-2 bg-muted rounded w-1/2" /></div>
               </div>
-            ) : (
-              votingEvents.map((ev: any) => (
-                <motion.div key={ev.id} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
-                  <Link to={`/events/${ev.slug}`} className="block group">
-                    <div className="rounded-xl overflow-hidden border border-border/30 hover:shadow-lg transition-all duration-300 bg-white">
-                      <div className="relative h-32 overflow-hidden bg-muted">
-                        {ev.banner_image ? (
-                          <img src={ev.banner_image} alt={ev.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${NAVY}15, ${ORANGE}15)` }}>
-                            <span className="text-3xl opacity-30">{typeEmoji[ev.event_type] || "🗳️"}</span>
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                        <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold text-white uppercase tracking-wide" style={{ background: '#dc2626' }}>
-                          <span className="relative flex h-1.5 w-1.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
-                          </span>
-                          Live
+            ))}
+          </div>
+        ) : votingEvents.length === 0 ? (
+          <div className="text-center py-16 text-muted-foreground">
+            <Vote className="w-12 h-12 mx-auto mb-3 opacity-20" />
+            <p className="text-sm" style={{ fontFamily: "'Montserrat', sans-serif" }}>No active events yet.</p>
+          </div>
+        ) : (
+          <motion.div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5" initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }}>
+            {votingEvents.map((ev: any) => (
+              <motion.div key={ev.id} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
+                <Link to={`/events/${ev.slug}`} className="block group h-full">
+                  <div className="h-full rounded-2xl border border-border/50 overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-secondary/40 flex flex-col bg-white">
+                    <div className="relative h-44 overflow-hidden bg-gradient-to-br from-muted to-muted/50 flex-shrink-0">
+                      {ev.banner_image ? (
+                        <img src={ev.banner_image} alt={ev.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${NAVY}15, ${ORANGE}15)` }}>
+                          <span className="text-6xl opacity-20">{typeEmoji[ev.event_type] || "🗳️"}</span>
                         </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                      <div className="absolute top-3 left-3 flex items-center gap-2">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                        </span>
+                        <span className="text-xs font-bold text-white bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded-full">LIVE</span>
                       </div>
-                      <div className="p-3">
-                        <h4 className="font-bold text-sm mb-1 truncate" style={{ color: NAVY, fontFamily: "'Montserrat', sans-serif" }}>{ev.title}</h4>
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          {typeEmoji[ev.event_type] || "🗳️"} <span className="capitalize">{ev.event_type?.replace('_', ' ')}</span>
+                      <div className="absolute bottom-0 left-0 right-0 px-4 py-3 flex items-center gap-1.5 text-white/80 text-xs">
+                        <Users className="w-3.5 h-3.5" />
+                        <span className="font-medium">{ev.total_votes?.toLocaleString() || 0} votes</span>
+                      </div>
+                    </div>
+                    <div className="p-4 flex flex-col flex-1">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="text-xs text-muted-foreground font-medium capitalize">{typeEmoji[ev.event_type] || "🗳️"} {ev.event_type?.replace('_', ' ')}</span>
+                      </div>
+                      <h3 className="font-display font-bold text-sm leading-snug mb-3 line-clamp-2 flex-1" style={{ color: NAVY }}>{ev.title}</h3>
+                      <div className="flex items-center justify-between pt-3 border-t border-border/40">
+                        <span className="text-xs font-semibold flex items-center gap-1.5" style={{ color: ORANGE }}>
+                          Vote Now
+                        </span>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center transition-all group-hover:scale-110" style={{ background: `${ORANGE}15`, color: ORANGE }}>
+                          <ChevronRight className="w-3.5 h-3.5" />
                         </div>
                       </div>
                     </div>
-                  </Link>
-                </motion.div>
-              ))
-            )}
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
           </motion.div>
+        )}
 
-          {/* Right — text */}
-          <motion.div className="lg:order-2 order-1" initial={{ opacity: 0, x: 40 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }}>
-            <h2 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: 'clamp(2rem, 5vw, 3.5rem)', lineHeight: 1.05, color: '#111', marginBottom: '0.2em' }}>
-              Active Elections
-            </h2>
-            <h2 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: 'clamp(1.5rem, 3.5vw, 2.5rem)', lineHeight: 1.05, color: ORANGE, marginBottom: '1.2rem' }}>
-              & Contests
-            </h2>
-            <p style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 400, color: '#444', lineHeight: 1.8, marginBottom: '1.8rem', fontSize: '1rem' }}>
-              Browse elections, contests, surveys, and live shows currently open for voting.
-              Cast your vote securely in just a few taps, from anywhere.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', marginBottom: '2rem' }}>
-              {["Secure, verified voting for every event", "Live results as votes come in", "Vote from any device, anywhere"].map((perk) => (
-                <div key={perk} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <CheckCircle2 style={{ width: 20, height: 20, color: ORANGE, flexShrink: 0 }} />
-                  <span style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 600, color: '#222', fontSize: '0.9rem' }}>{perk}</span>
-                </div>
-              ))}
-            </div>
-            <Link to="/events">
-              <button style={{
-                background: ORANGE, color: 'white', border: 'none', cursor: 'pointer',
-                padding: '1rem 2rem', fontFamily: "'Montserrat', sans-serif",
-                fontWeight: 900, fontSize: '1rem', letterSpacing: '0.06em',
-                textTransform: 'uppercase', borderRadius: '4px', transition: 'all 0.2s',
-              }}
-                onMouseEnter={e => { (e.target as HTMLElement).style.background = '#d06800'; }}
-                onMouseLeave={e => { (e.target as HTMLElement).style.background = ORANGE; }}
-              >
-                VIEW ALL EVENTS
-              </button>
+        <div className="text-center mt-12">
+          <Link to="/events">
+            <button style={{
+              background: 'transparent', color: NAVY, border: `2px solid ${NAVY}`, cursor: 'pointer',
+              padding: '0.9rem 2.2rem', fontFamily: "'Montserrat', sans-serif",
+              fontWeight: 900, fontSize: '0.9rem', letterSpacing: '0.06em',
+              textTransform: 'uppercase', borderRadius: '4px', transition: 'all 0.2s',
+            }}
+              onMouseEnter={e => { (e.target as HTMLElement).style.background = NAVY; (e.target as HTMLElement).style.color = 'white'; }}
+              onMouseLeave={e => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = NAVY; }}
+            >
+              VIEW ALL EVENTS
+            </button>
+          </Link>
+          <div className="mt-4">
+            <Link to="/results" style={{
+              fontFamily: "'Montserrat', sans-serif", fontWeight: 700, fontSize: '0.85rem',
+              color: '#666', letterSpacing: '0.03em', textDecoration: 'underline', textUnderlineOffset: '3px',
+            }}>
+              View Ended Events &amp; Results →
             </Link>
-          </motion.div>
-
+          </div>
         </div>
+
       </div>
     </section>
   );
 };
 
-// ── Tickets Section ───────────────────────────────────────────────────────────
-const TicketsSection = () => {
-  const [ticketEvents, setTicketEvents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch(`${API}/tickets/`)
-      .then(r => r.json())
-      .then(data => { setTicketEvents((data || []).slice(0, 4)); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-
-  const getMinPrice = (tiers: any[]) => {
-    if (!tiers?.length) return null;
-    const active = tiers.filter(t => !t.is_sold_out);
-    if (!active.length) return "Sold Out";
-    return `GHS ${Math.min(...active.map((t: any) => t.price))}`;
-  };
-
-  const formatDate = (d: string) => {
-    if (!d) return "";
-    return new Date(d).toLocaleDateString("en-GH", { day: "numeric", month: "short", year: "numeric" });
-  };
-
-  return (
-    <section className="py-20" style={{ background: '#f2f2f2' }}>
-      <div className="container mx-auto px-4">
-        <div className="grid lg:grid-cols-2 gap-16 items-start">
-
-          {/* Left — text */}
-          <motion.div initial={{ opacity: 0, x: -40 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }}>
-            <h2 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: 'clamp(2rem, 5vw, 3.5rem)', lineHeight: 1.05, color: '#111', marginBottom: '0.2em' }}>
-              Live Events
-            </h2>
-            <h2 style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 900, fontSize: 'clamp(1.5rem, 3.5vw, 2.5rem)', lineHeight: 1.05, color: ORANGE, marginBottom: '1.2rem' }}>
-              Be There
-            </h2>
-            <p style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 400, color: '#444', lineHeight: 1.8, marginBottom: '1.8rem', fontSize: '1rem' }}>
-              From sold-out concerts to exclusive award nights — secure your spot before it's gone.
-              Instant coded tickets delivered to your inbox, accepted at the gate in seconds.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', marginBottom: '2rem' }}>
-              {["Instant digital tickets with unique code", "Secure payment via Mobile Money & Card", "Entry verification at the door"].map((perk) => (
-                <div key={perk} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <CheckCircle2 style={{ width: 20, height: 20, color: ORANGE, flexShrink: 0 }} />
-                  <span style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 600, color: '#222', fontSize: '0.9rem' }}>{perk}</span>
-                </div>
-              ))}
-            </div>
-            <Link to="/tickets">
-              <button style={{
-                background: ORANGE, color: 'white', border: 'none', cursor: 'pointer',
-                padding: '1rem 2rem', fontFamily: "'Montserrat', sans-serif",
-                fontWeight: 900, fontSize: '1rem', letterSpacing: '0.06em',
-                textTransform: 'uppercase', borderRadius: '4px', transition: 'all 0.2s',
-              }}
-                onMouseEnter={e => { (e.target as HTMLElement).style.background = '#d06800'; }}
-                onMouseLeave={e => { (e.target as HTMLElement).style.background = ORANGE; }}
-              >
-                GET YOUR TICKETS
-              </button>
-            </Link>
-          </motion.div>
-
-          {/* Right — ticket event cards */}
-          <motion.div className="grid grid-cols-2 gap-4" initial={{ opacity: 0, x: 40 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7 }}>
-            {loading ? (
-              [...Array(4)].map((_, i) => (
-                <div key={i} className="rounded-xl overflow-hidden animate-pulse border border-border/30">
-                  <div className="h-32 bg-muted" />
-                  <div className="p-3 space-y-2"><div className="h-3 bg-muted rounded w-3/4" /><div className="h-2 bg-muted rounded w-1/2" /></div>
-                </div>
-              ))
-            ) : ticketEvents.length === 0 ? (
-              <div className="col-span-2 text-center py-12 text-muted-foreground">
-                <Ticket className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p className="text-sm" style={{ fontFamily: "'Montserrat', sans-serif" }}>No ticket events yet.</p>
-                <Link to="/tickets" className="text-sm font-bold mt-2 inline-block" style={{ color: ORANGE }}>Browse all events →</Link>
-              </div>
-            ) : (
-              ticketEvents.map((ev: any) => {
-                const minPrice = getMinPrice(ev.tiers);
-                const allSoldOut = ev.tiers?.every((t: any) => t.is_sold_out);
-                return (
-                  <motion.div key={ev.id} whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
-                    <Link to={`/tickets/${ev.slug}`} className="block group">
-                      <div className="rounded-xl overflow-hidden border border-border/30 hover:shadow-lg transition-all duration-300 bg-white">
-                        <div className="relative h-32 overflow-hidden bg-muted">
-                          {ev.banner ? (
-                            <img src={ev.banner} alt={ev.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${NAVY}15, ${ORANGE}15)` }}>
-                              <Ticket className="w-10 h-10 opacity-20" style={{ color: NAVY }} />
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                          <div className="absolute top-2 right-2 px-2 py-0.5 rounded text-xs font-bold text-white" style={{ background: allSoldOut ? '#dc2626' : NAVY }}>
-                            {allSoldOut ? "Sold Out" : minPrice}
-                          </div>
-                        </div>
-                        <div className="p-3">
-                          <h4 className="font-bold text-sm mb-1 truncate" style={{ color: NAVY, fontFamily: "'Montserrat', sans-serif" }}>{ev.title}</h4>
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Calendar className="w-3 h-3" style={{ color: ORANGE }} />{formatDate(ev.event_date)}
-                          </div>
-                          {ev.venue && (
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-                              <MapPin className="w-3 h-3" style={{ color: ORANGE }} /><span className="truncate">{ev.venue}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </Link>
-                  </motion.div>
-                );
-              })
-            )}
-          </motion.div>
-        </div>
-      </div>
-    </section>
-  );
-};
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 const Index = () => {
@@ -447,9 +329,6 @@ const Index = () => {
 
       {/* ═══ EVENTS ═══ */}
       <EventsSection />
-
-      {/* ═══ TICKETS ═══ */}
-      <TicketsSection />
 
       {/* ═══ PRINCIPLES (Democracy Reimagined) ═══ */}
       <section style={{ background: 'white', padding: '5rem 0' }}>

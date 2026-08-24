@@ -393,7 +393,7 @@ class NominatableEventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Event
-        fields = ['id', 'slug', 'title', 'thumbnail', 'event_type', 'categories', 'nominations_open']
+        fields = ['id', 'slug', 'title', 'thumbnail', 'banner_image', 'event_type', 'categories', 'nominations_open']
 
     def get_categories(self, obj):
         cats = obj.categories.filter(is_active=True).order_by('order', 'name')
@@ -401,6 +401,8 @@ class NominatableEventSerializer(serializers.ModelSerializer):
 
 
 class NominationCreateSerializer(serializers.ModelSerializer):
+    photo = serializers.ImageField(required=True, allow_null=False)
+
     class Meta:
         model  = Nomination
         fields = ['category', 'full_name', 'stage_name', 'phone', 'photo', 'reason']

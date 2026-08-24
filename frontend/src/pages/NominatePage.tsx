@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles, ArrowLeft, ArrowRight, Loader2, CheckCircle2,
-  ImageIcon, X, Calendar, Tag, User, Mic2, Phone, MessageSquare,
+  ImageIcon, X, Calendar, Tag, User, Mic2, Phone, MessageSquare, Users, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,9 +17,13 @@ const NAVY = "#002856";
 const ORANGE = "#e87200";
 
 type NominatableEvent = {
-  id: string; slug: string; title: string; thumbnail: string | null;
+  id: string; slug: string; title: string; thumbnail: string | null; banner_image: string | null;
   event_type: string; nominations_open: boolean;
   categories: { id: string; name: string }[];
+};
+
+const typeEmoji: Record<string, string> = {
+  election: "🗳️", contest: "🏆", survey: "📊", live_show: "📺",
 };
 
 const normalizePhone = (raw: string): string => {
@@ -102,7 +106,7 @@ const NominatePage = () => {
       case "stage_name": return stageName.trim().length >= 1;
       case "phone":       return isValidPhone(phone);
       case "category":   return !!categoryId;
-      case "photo":      return true; // optional-ish, but recommended
+      case "photo":      return !!photoFile;
       case "reason":     return true; // optional
       default:           return true;
     }
@@ -199,14 +203,46 @@ const NominatePage = () => {
     <div className="min-h-screen bg-background" style={{ fontFamily: "'Montserrat', sans-serif" }}>
       <Navbar />
       <div className="pt-24 pb-20 flex items-center justify-center min-h-screen px-4">
-        <motion.div className="w-full max-w-md" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+        <motion.div className={`w-full ${step === "event" ? "max-w-4xl" : "max-w-lg"}`} initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
 
-          {/* Progress dots */}
-          <div className="flex items-center justify-center gap-1.5 mb-6">
-            {STEPS.map((s, i) => (
-              <div key={s} className="h-1.5 rounded-full transition-all duration-300"
-                style={{ width: i === stepIdx ? 22 : 8, background: i <= stepIdx ? ORANGE : "#e5e7eb" }} />
-            ))}
+          {/* Modern step progress */}
+          <div className="mb-8">
+            <div className="h-1 rounded-full bg-muted overflow-hidden mb-5">
+              <motion.div className="h-full rounded-full" style={{ background: ORANGE }}
+                initial={false}
+                animate={{ width: `${((stepIdx + 1) / STEPS.length) * 100}%` }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              />
+            </div>
+            <style>{`.nominate-steps::-webkit-scrollbar { display: none; }`}</style>
+            <div className="nominate-steps flex items-start overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+              {STEPS.map((s, i) => {
+                const isDone = i < stepIdx;
+                const isCurrent = i === stepIdx;
+                return (
+                  <div key={s} className="flex items-center flex-shrink-0">
+                    <div className="flex flex-col items-center" style={{ minWidth: 62 }}>
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 flex-shrink-0"
+                        style={{
+                          background: isDone ? ORANGE : isCurrent ? "white" : "#f1f1f1",
+                          border: isCurrent ? `2px solid ${ORANGE}` : "2px solid transparent",
+                          color: isDone ? "white" : isCurrent ? ORANGE : "#9ca3af",
+                          boxShadow: isCurrent ? `0 0 0 4px ${ORANGE}1a` : "none",
+                        }}>
+                        {isDone ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : i + 1}
+                      </div>
+                      <span className="text-[10px] mt-1.5 font-medium text-center leading-tight whitespace-nowrap"
+                        style={{ color: isCurrent ? ORANGE : isDone ? "#374151" : "#9ca3af" }}>
+                        {STEP_LABELS[s]}
+                      </span>
+                    </div>
+                    {i < STEPS.length - 1 && (
+                      <div className="h-0.5 rounded-full transition-colors duration-300 mb-4" style={{ width: 20, background: isDone ? ORANGE : "#e5e7eb" }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div className="text-center mb-6">
@@ -214,7 +250,6 @@ const NominatePage = () => {
               <Sparkles className="w-7 h-7 text-white" />
             </div>
             <p className="text-lg font-semibold text-foreground">Nominate Yourself</p>
-            <p className="text-sm text-muted-foreground mt-1">Step {stepIdx + 1} of {STEPS.length} · {STEP_LABELS[step]}</p>
           </div>
 
           <div className="glass-card p-6 shadow-xl">
@@ -224,29 +259,59 @@ const NominatePage = () => {
                 {step === "event" && (
                   <div>
                     <label className="text-sm font-medium mb-2 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Which event are you nominating yourself for?</label>
-                    <div className="space-y-2 max-h-72 overflow-y-auto">
-                      {events.map(ev => (
-                        <button key={ev.id}
-                          onClick={() => {
-                            if (!ev.nominations_open) {
-                              toast({ title: "Nominations are currently closed", description: `${ev.title} is not accepting nominations right now.`, variant: "destructive" });
-                              return;
-                            }
-                            setSelectedEventId(ev.id); setCategoryId("");
-                          }}
-                          className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${!ev.nominations_open ? "opacity-60" : ""}`}
-                          style={{ borderColor: selectedEventId === ev.id ? ORANGE : "var(--border)", background: selectedEventId === ev.id ? `${ORANGE}0d` : "transparent" }}>
-                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center text-lg">
-                            {ev.thumbnail ? <img src={ev.thumbnail} className="w-full h-full object-cover" /> : "🏆"}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{ev.title}</p>
-                            {ev.nominations_open
-                              ? <p className="text-xs text-muted-foreground">{ev.categories.length} categories</p>
-                              : <p className="text-xs text-destructive font-medium">Nominations closed</p>}
-                          </div>
-                        </button>
-                      ))}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-[65vh] overflow-y-auto pr-1">
+                      {events.map(ev => {
+                        const isSelected = selectedEventId === ev.id;
+                        const image = ev.banner_image || ev.thumbnail;
+                        return (
+                          <button key={ev.id}
+                            onClick={() => {
+                              if (!ev.nominations_open) {
+                                toast({ title: "Nominations are currently closed", description: `${ev.title} is not accepting nominations right now.`, variant: "destructive" });
+                                return;
+                              }
+                              setSelectedEventId(ev.id); setCategoryId("");
+                            }}
+                            className={`relative rounded-xl border-2 overflow-hidden text-left transition-all ${!ev.nominations_open ? "opacity-60" : "hover:shadow-lg hover:-translate-y-0.5"}`}
+                            style={{
+                              borderColor: isSelected ? ORANGE : "var(--border)",
+                              boxShadow: isSelected ? `0 0 0 3px ${ORANGE}33, 0 8px 20px ${ORANGE}26` : "none",
+                            }}>
+                            {isSelected && (
+                              <div className="absolute top-3 right-3 z-20 w-6 h-6 rounded-full flex items-center justify-center shadow-md border-2 border-white" style={{ background: ORANGE }}>
+                                <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                              </div>
+                            )}
+                            <div className="relative h-32 overflow-hidden bg-muted">
+                              {image ? (
+                                <img src={image} alt={ev.title} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${NAVY}15, ${ORANGE}15)` }}>
+                                  <span className="text-4xl opacity-30">{typeEmoji[ev.event_type] || "🏆"}</span>
+                                </div>
+                              )}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/5 to-transparent" />
+                              {isSelected && <div className="absolute inset-0" style={{ background: `${ORANGE}22` }} />}
+                              <div className="absolute top-2 left-2">
+                                {ev.nominations_open
+                                  ? <span className="text-[10px] font-bold text-white bg-green-600/90 backdrop-blur-sm px-2 py-0.5 rounded-full">OPEN</span>
+                                  : <span className="text-[10px] font-bold text-white bg-destructive/90 backdrop-blur-sm px-2 py-0.5 rounded-full">CLOSED</span>}
+                              </div>
+                              <div className="absolute bottom-2 left-3 right-3">
+                                <p className="text-sm font-bold text-white truncate">{ev.title}</p>
+                              </div>
+                            </div>
+                            <div className="px-3 py-2 flex flex-col gap-1" style={{ background: isSelected ? `${ORANGE}12` : "white" }}>
+                              <span className="text-xs text-muted-foreground font-medium capitalize flex items-center gap-1">
+                                {typeEmoji[ev.event_type] || "🏆"} {ev.event_type?.replace("_", " ")}
+                              </span>
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Users className="w-3 h-3" /> {ev.categories.length} categories
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -303,14 +368,20 @@ const NominatePage = () => {
                   <div>
                     <label className="text-sm font-medium mb-2 flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5" /> Upload Your Photo</label>
                     <div onClick={() => fileRef.current?.click()}
-                      className="relative w-full h-40 rounded-lg border-2 border-dashed border-border hover:border-secondary cursor-pointer flex items-center justify-center overflow-hidden bg-muted/30">
-                      {preview
-                        ? <><img src={preview} className="w-full h-full object-cover" />
-                            <button onClick={e => { e.stopPropagation(); setPreview(null); setPhotoFile(null); if (fileRef.current) fileRef.current.value = ""; }}
-                              className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white"><X className="w-3 h-3" /></button></>
-                        : <div className="text-center"><ImageIcon className="w-8 h-8 mx-auto mb-1 text-muted-foreground opacity-50" /><p className="text-xs text-muted-foreground">Click to upload a photo</p></div>}
+                      className="relative w-56 mx-auto rounded-lg border-2 border-dashed border-border hover:border-secondary cursor-pointer overflow-hidden bg-muted/30">
+                      <div className="w-full" style={{ paddingBottom: "80%" }} />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        {preview
+                          ? <><img src={preview} className="absolute inset-0 w-full h-full object-contain" />
+                              <button onClick={e => { e.stopPropagation(); setPreview(null); setPhotoFile(null); if (fileRef.current) fileRef.current.value = ""; }}
+                                className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white"><X className="w-3 h-3" /></button></>
+                          : <div className="text-center px-3"><ImageIcon className="w-8 h-8 mx-auto mb-1 text-muted-foreground opacity-50" /><p className="text-xs text-muted-foreground">Click to upload</p></div>}
+                      </div>
                     </div>
                     <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+                    <p className="text-xs text-muted-foreground text-center mt-3 leading-relaxed">
+                      Please upload a nice, clear photo of yourself — this will be your official picture on the site, seen by everyone who votes for you.
+                    </p>
                   </div>
                 )}
 
