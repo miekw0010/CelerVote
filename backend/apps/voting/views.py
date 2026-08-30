@@ -10,6 +10,28 @@ from .services import VoteCaster, get_live_results
 from .serializers import CastVoteSerializer, BulkCastVoteSerializer, VoterActivitySerializer, FraudFlagSerializer
 import asyncio
 
+def _send_vote_confirmation_sms(voter_roll_entry, event):
+    """
+    Org elections: confirm the vote was recorded, by SMS.
+    Deliberately takes only the voter roll entry + event — never the ballot
+    or candidate selections — so it is structurally impossible for this
+    message to reveal who the voter chose. Ballot secrecy is by design here,
+    not just by convention.
+    """
+    if not voter_roll_entry.phone:
+        return
+    try:
+        from apps.notifications.tasks import send_sms
+        message = (
+            f"Your vote for {event.title} has been recorded. Thank you for voting! "
+            f"Your voting code is now marked as used and cannot be reused."
+        )
+        send_sms(voter_roll_entry.phone, message)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f'Vote confirmation SMS failed for voter {voter_roll_entry.voter_id}: {e}')
+
+
 def broadcast_results(event):
     """Push updated results to all WebSocket clients watching this event."""
     try:
@@ -305,6 +327,7 @@ class BulkCastVoteView(APIView):
                 voter_roll_entry.status = 'used'
                 voter_roll_entry.used_at = tz.now()
                 voter_roll_entry.save(update_fields=['status', 'used_at'])
+                _send_vote_confirmation_sms(voter_roll_entry, event)
 
             broadcast_results(event)
             return Response(result, status=status.HTTP_201_CREATED)

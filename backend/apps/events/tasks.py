@@ -95,3 +95,40 @@ def process_voter_roll_csv(self, event_id: str, csv_text: str, send_sms: bool = 
     cache.set(task_key, result, timeout=600)
     logger.info(f'CSV upload complete for event {event_id}: {result["message"]}')
     return result
+
+
+@shared_task(bind=True, max_retries=0, name='events.resend_voter_roll_sms')
+def resend_voter_roll_sms(self, event_id: str, only_unsent: bool = False):
+    """
+    (Re)send voting-code SMS to every voter on an event's roll who has a
+    phone number. Runs in the background — a full voter roll can be large
+    enough (hundreds of voters) that sending one-by-one synchronously inside
+    an HTTP request risks a gateway timeout, so this mirrors the same
+    dispatch pattern used for CSV uploads.
+    """
+    from django.core.cache import cache
+    from apps.events.models import Event, VoterRoll
+    from apps.events.views import _send_voting_code_sms
+
+    task_key = f'voter_resend_all:{event_id}:{self.request.id}'
+    cache.set(task_key, {'status': 'processing', 'sent': 0}, timeout=600)
+
+    try:
+        event = Event.objects.get(id=event_id)
+    except Event.DoesNotExist:
+        return {'status': 'error', 'message': 'Event not found.'}
+
+    qs = VoterRoll.objects.filter(event=event).exclude(phone='')
+    if only_unsent:
+        qs = qs.filter(sms_sent=False)
+
+    sent = 0
+    for voter in qs:
+        _send_voting_code_sms(voter)
+        if voter.sms_sent:
+            sent += 1
+
+    result = {'status': 'done', 'message': f'Sent voting codes to {sent} voter(s).', 'sent': sent}
+    cache.set(task_key, result, timeout=600)
+    logger.info(f'Voter roll resend-all complete for event {event_id}: {result["message"]}')
+    return result

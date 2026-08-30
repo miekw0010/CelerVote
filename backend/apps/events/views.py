@@ -3,9 +3,24 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAuthenticatedOrReadOnly
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.throttling import AnonRateThrottle
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 import django_filters
+
+
+class VotingCodeThrottle(AnonRateThrottle):
+    """
+    Dedicated throttle for the org-election code-entry screen — kept separate
+    from the general 'anon' bucket so that ordinary site browsing on a shared
+    campus/office IP can't eat into the budget legitimate voters need on
+    election day, and so a burst of many students voting from the same NAT'd
+    IP isn't mistaken for abuse. The 6-character code space (~887M
+    combinations) is what actually protects against brute-forcing here, not
+    a tight rate limit — this is generous by design.
+    """
+    scope = 'voting_code_verify'
+
 
 from .models import Event, Category, Candidate, Nomination
 from .serializers import (
@@ -766,6 +781,34 @@ class VoterRollVoterDetailView(APIView):
 VoterRollResendSMSView = VoterRollVoterDetailView
 
 
+class VoterRollResendAllSMSView(APIView):
+    """Admin: (re)send voting-code SMS to every voter on the roll who has a phone number."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, slug):
+        event = get_object_or_404(Event, slug=slug)
+        if event.organizer != request.user and request.user.role != 'superadmin':
+            return Response({'error': 'Permission denied.'}, status=403)
+
+        only_unsent = str(request.data.get('only_unsent', 'false')).lower() == 'true'
+
+        # Dispatch to Celery — a large roll sending SMS one-by-one can take
+        # long enough to hit an HTTP gateway timeout, so this runs in the
+        # background exactly like CSV upload does, with the same fallback.
+        try:
+            from apps.events.tasks import resend_voter_roll_sms
+            task = resend_voter_roll_sms.delay(str(event.id), only_unsent)
+            return Response({
+                'status':  'processing',
+                'task_id': task.id,
+                'message': 'Sending voting codes in the background — this may take a moment for a large roll.',
+            }, status=202)
+        except Exception:
+            from apps.events.tasks import resend_voter_roll_sms
+            result = resend_voter_roll_sms(str(event.id), only_unsent)
+            return Response(result)
+
+
 class VoterRollCSVUploadView(APIView):
     """Admin: bulk upload voters via CSV."""
     permission_classes = [IsAuthenticated]
@@ -802,7 +845,7 @@ class VoterRollCSVUploadView(APIView):
         if not id_col:
             return Response({'error': 'CSV needs a column: id, voter_id, student_id, staff_id, index, or index_number.'}, status=400)
 
-        send_sms_raw  = request.POST.get('send_sms', request.data.get('send_sms', 'true'))
+        send_sms_raw  = request.POST.get('send_sms', request.data.get('send_sms', 'false'))
         send_sms_flag = str(send_sms_raw).lower() == 'true'
 
         # Dispatch to Celery — returns 202 immediately so the request doesn't block
@@ -828,6 +871,7 @@ class VotingCodeVerifyView(APIView):
     """
     permission_classes     = [AllowAny]
     authentication_classes = []
+    throttle_classes       = [VotingCodeThrottle]
 
     def post(self, request, slug):
         event = get_object_or_404(Event, slug=slug)
@@ -913,9 +957,10 @@ def _send_voting_code_sms(voter):
         return
     try:
         from apps.notifications.tasks import send_sms
+        event_link = f'https://celervote.com/events/{voter.event.slug}'
         message = (
             f"Your voting code for {voter.event.title} is: {voter.voting_code}\n"
-            f"Enter this code on the voting page to cast your vote."
+            f"Enter this code at {event_link} to cast your vote."
         )
         send_sms(voter.phone, message)
         voter.sms_sent = True

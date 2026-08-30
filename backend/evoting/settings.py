@@ -145,8 +145,9 @@ REST_FRAMEWORK = {
    'DEFAULT_THROTTLE_RATES': {
     'anon':          '300/hour',   # increased — admin pages need higher limit
     'user':          '2000/hour',
-    'otp_request':   '5/hour',
-    'otp_verify':    '10/hour',
+    'otp_request':   config('OTP_REQUEST_THROTTLE_RATE', default='5/hour'),
+    'otp_verify':    config('OTP_VERIFY_THROTTLE_RATE', default='10/hour'),
+    'voting_code_verify': '60/minute',
     'login':         '10/hour',
     'vote':          '300/hour',
     'vote_cast':     '30/minute',

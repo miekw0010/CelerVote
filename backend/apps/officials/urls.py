@@ -13,6 +13,8 @@ urlpatterns = [
     path('voter-roll/',        views.OfficialVoterRollView.as_view(),   name='official-voter-roll'),
     path('voter-roll/add/',    views.OfficialAddVoterView.as_view(),    name='official-add-voter'),
     path('voter-roll/upload/', views.OfficialVoterRollCSVUploadView.as_view(), name='official-voter-roll-upload'),
+    path('voter-roll/resend-all/', views.OfficialResendAllVoterSMSView.as_view(), name='official-voter-roll-resend-all'),
+    path('voter-roll/<uuid:voter_id>/resend/', views.OfficialResendVoterSMSView.as_view(), name='official-voter-roll-resend'),
     path('withdrawals/',       views.OfficialWithdrawalView.as_view(),  name='official-withdrawals'),
 
     # ── Official: Nominations ─────────────────────────────────────────────────

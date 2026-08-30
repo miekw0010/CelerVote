@@ -512,14 +512,8 @@ class OfficialAddVoterView(APIView, IsOfficialPermission):
 
         if send_sms and phone:
             try:
-                from apps.notifications.tasks import send_sms as _send_sms
-                _send_sms(phone, (
-                    f'Hello {name or voter_id}, your voting code for '
-                    f'{event.title} is: {voter.voting_code}. '
-                    f'Use it on the voting page to cast your vote.'
-                ))
-                voter.sms_sent = True
-                voter.save(update_fields=['sms_sent'])
+                from apps.events.views import _send_voting_code_sms
+                _send_voting_code_sms(voter)
             except Exception:
                 pass
 
@@ -556,6 +550,49 @@ class OfficialVoterRollCSVUploadView(APIView, IsOfficialPermission):
             return Response({'error': str(e)}, status=400)
 
         return Response({'success': True, 'message': 'Voters uploaded successfully.'})
+
+
+class OfficialResendVoterSMSView(APIView, IsOfficialPermission):
+    """Election official: resend a single voter's voting-code SMS."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, voter_id):
+        official = self._get_official(request)
+        if not official or official.event_kind != Official.EventKind.ELECTION:
+            return Response({'error': 'Election official access required.'}, status=403)
+
+        from apps.events.models import VoterRoll
+        from apps.events.views import _send_voting_code_sms
+        voter = get_object_or_404(VoterRoll, id=voter_id, event=official.event)
+        if not voter.phone:
+            return Response({'error': 'No phone number on file for this voter.'}, status=400)
+        _send_voting_code_sms(voter)
+        return Response({'message': f'SMS resent to {voter.phone}', 'sms_sent': voter.sms_sent})
+
+
+class OfficialResendAllVoterSMSView(APIView, IsOfficialPermission):
+    """Election official: (re)send voting-code SMS to every voter with a phone number."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        official = self._get_official(request)
+        if not official or official.event_kind != Official.EventKind.ELECTION:
+            return Response({'error': 'Election official access required.'}, status=403)
+
+        only_unsent = str(request.data.get('only_unsent', 'false')).lower() == 'true'
+
+        try:
+            from apps.events.tasks import resend_voter_roll_sms
+            task = resend_voter_roll_sms.delay(str(official.event.id), only_unsent)
+            return Response({
+                'status':  'processing',
+                'task_id': task.id,
+                'message': 'Sending voting codes in the background — this may take a moment for a large roll.',
+            }, status=202)
+        except Exception:
+            from apps.events.tasks import resend_voter_roll_sms
+            result = resend_voter_roll_sms(str(official.event.id), only_unsent)
+            return Response(result)
 
 
 # ── Official: Withdrawals ─────────────────────────────────────────────────────

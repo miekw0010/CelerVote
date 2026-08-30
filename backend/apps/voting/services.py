@@ -297,6 +297,14 @@ class VoteCaster:
             except Category.DoesNotExist:
                 return {'success': False, 'error': f'Invalid category: {item["category_id"]}'}
 
+            # ── Group visibility must be re-checked here, not just when the
+            # ballot was displayed — otherwise a crafted request could vote
+            # in a category outside the voter's assigned group entirely.
+            if not category.is_global:
+                voter_group_id = str(self.voter_group.id) if self.voter_group else None
+                if not voter_group_id or not category.groups.filter(id=voter_group_id).exists():
+                    return {'success': False, 'error': f'You are not permitted to vote in category: {category.name}'}
+
             try:
                 candidate = Candidate.objects.get(
                     id=item['candidate_id'], category=category, is_active=True
