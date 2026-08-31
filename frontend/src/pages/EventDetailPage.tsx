@@ -5,7 +5,7 @@ import {
   ArrowLeft, Users, Clock, Shield, CheckCircle2, Share2,
   Loader2, Trophy, ChevronRight, Lock, Calendar,
   BarChart2, Zap, Radio, Minus, Plus, AlertCircle,
-  Vote, ListChecks, ClipboardList, RotateCcw, Search, X,
+  Vote, ListChecks, ClipboardList, RotateCcw, Search, X, KeyRound, ClipboardPaste, HelpCircle,
 } from "lucide-react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -39,13 +39,17 @@ const fireConfetti = () => {
 function OrgDoneCard({ voterRollName, eventTitle, onReset }: {
   voterRollName: string; eventTitle: string; onReset: () => void;
 }) {
-  const [n, setN] = useState(5);
+  const [n, setN] = useState(10);
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
   useEffect(() => {
     const t = setInterval(() => setN(p => { if (p <= 1) { clearInterval(t); onReset(); return 0; } return p - 1; }), 1000);
     return () => clearInterval(t);
   }, []);
   return (
-    <motion.div className="glass-card p-10 text-center border-green-500/30 bg-green-500/5"
+    <motion.div ref={cardRef} className="glass-card p-10 text-center border-green-500/30 bg-green-500/5"
       initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
       <div className="w-20 h-20 rounded-full bg-green-500/10 border-2 border-green-500/30 flex items-center justify-center mx-auto mb-5">
         <CheckCircle2 className="w-10 h-10 text-green-400" />
@@ -61,7 +65,7 @@ function OrgDoneCard({ voterRollName, eventTitle, onReset }: {
             <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="4" className="text-muted/30" />
             <motion.circle cx="32" cy="32" r="28" fill="none" stroke={ORANGE} strokeWidth="4"
               strokeDasharray={`${2 * Math.PI * 28}`} initial={{ strokeDashoffset: 0 }}
-              animate={{ strokeDashoffset: 2 * Math.PI * 28 }} transition={{ duration: 5, ease: "linear" }} strokeLinecap="round" />
+              animate={{ strokeDashoffset: 2 * Math.PI * 28 }} transition={{ duration: 10, ease: "linear" }} strokeLinecap="round" />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="text-xl font-black" style={{ color: ORANGE }}>{n}</span>
@@ -535,7 +539,7 @@ const EventDetailPage = () => {
         if (n < MAX && !isCompleted && !msg.includes('already been used')) {
           toast({ 
             title: `Confirming your vote (${n}/${MAX})`, 
-            description: "Your payment was received — we're recording your vote.",
+            description: "Your payment was received. We're recording your vote.",
             duration: 2000
           });
           await new Promise(r => setTimeout(r, n * 2000));
@@ -620,30 +624,64 @@ const EventDetailPage = () => {
 
       {/* ══ ORG: Code entry screen ══════════════════════════════════════════ */}
       {isOrg && !rollVerified && isActive && (
-        <div className="min-h-screen flex items-center justify-center px-4" style={{ paddingTop: 80 }}>
-          <div className="w-full max-w-lg">
-            <motion.div className="text-center mb-10" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-              {event.banner_image
-                ? <img src={event.banner_image} alt={event.title} className="w-20 h-20 rounded-2xl object-cover mx-auto mb-5 shadow-lg" />
-                : <div className="w-20 h-20 rounded-2xl mx-auto mb-5 flex items-center justify-center text-4xl shadow-lg" style={{ background: `linear-gradient(135deg,${NAVY},${NAVY}cc)` }}>🗳️</div>
-              }
-              <h1 className="text-3xl font-display font-black mb-2">{event.title}</h1>
+        <div className="min-h-screen relative flex items-center justify-center px-4 overflow-hidden"
+          style={{ paddingTop: 80, background: `radial-gradient(ellipse 80% 60% at 50% 0%, ${NAVY}f2, #050b1a 65%)` }}>
+
+          {/* decorative glow orbs */}
+          <div className="absolute top-[-10%] left-[-10%] w-[420px] h-[420px] rounded-full pointer-events-none"
+            style={{ background: ORANGE, opacity: 0.16, filter: "blur(110px)" }} />
+          <div className="absolute bottom-[-15%] right-[-10%] w-[480px] h-[480px] rounded-full pointer-events-none"
+            style={{ background: "#3b82f6", opacity: 0.14, filter: "blur(120px)" }} />
+
+          <div className="w-full max-w-md relative z-10">
+            <motion.div className="text-center mb-8" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
+              <div className="relative w-20 h-20 mx-auto mb-5">
+                <motion.div className="absolute inset-0 rounded-2xl" style={{ background: ORANGE }}
+                  animate={{ opacity: [0.35, 0, 0.35], scale: [1, 1.35, 1] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }} />
+                {event.banner_image
+                  ? <img src={event.banner_image} alt={event.title} className="relative w-20 h-20 rounded-2xl object-cover shadow-xl" />
+                  : <div className="relative w-20 h-20 rounded-2xl flex items-center justify-center shadow-xl" style={{ background: `linear-gradient(135deg, ${ORANGE}, #c9600a)` }}>
+                      <KeyRound className="w-9 h-9 text-white" strokeWidth={2} />
+                    </div>
+                }
+              </div>
+              <h1 className="text-3xl font-display font-black mb-2 text-white">{event.title}</h1>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
-                style={{ background: `${NAVY}12`, border: `1px solid ${NAVY}25`, color: NAVY }}>
+                style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#e5e9f0" }}>
                 <Shield className="w-3 h-3" /> Organizational Election
               </span>
-              <p className="text-muted-foreground text-sm mt-4 max-w-sm mx-auto">Enter the 6-character voting code you received to access your ballot.</p>
+              <p className="text-sm mt-4 max-w-sm mx-auto" style={{ color: "rgba(255,255,255,0.55)" }}>Enter the 6-character voting code you received to access your ballot.</p>
             </motion.div>
 
-            <motion.div className="bg-card border border-border/40 rounded-3xl shadow-xl overflow-hidden"
+            <motion.div className="rounded-3xl shadow-2xl overflow-hidden" style={{ background: "white" }}
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
               <div className="h-1.5 w-full" style={{ background: `linear-gradient(90deg,${NAVY},${ORANGE})` }} />
               <div className="p-8">
-                <p className="text-center text-xs font-bold text-muted-foreground mb-6 uppercase tracking-widest">Your Voting Code</p>
-                <div className="flex justify-center gap-2 sm:gap-3 mb-6">
+                <div className="flex items-center justify-between mb-6">
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Your Voting Code</p>
+                  <button type="button"
+                    onClick={async () => {
+                      try {
+                        const text = await navigator.clipboard.readText();
+                        const p = text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+                        if (!p) return;
+                        setVoterRollId(p); setVoterRollError('');
+                        setTimeout(() => codeRefs[Math.min(p.length, 5)].current?.focus(), 0);
+                        if (p.length === 6) setTimeout(() => handleVerifyVoterId(), 150);
+                      } catch { /* clipboard permission denied - ignore, user can type/paste manually */ }
+                    }}
+                    className="flex items-center gap-1 text-xs font-semibold transition-opacity hover:opacity-70" style={{ color: ORANGE }}>
+                    <ClipboardPaste className="w-3.5 h-3.5" /> Paste
+                  </button>
+                </div>
+
+                <motion.div className="flex justify-center gap-2 sm:gap-3 mb-6"
+                  animate={voterRollError ? { x: [0, -9, 9, -9, 9, -4, 4, 0] } : { x: 0 }}
+                  transition={{ duration: 0.45 }}>
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <input key={i} ref={codeRefs[i]} type="text" inputMode="text" maxLength={1}
+                    <motion.input key={i} ref={codeRefs[i]} type="text" inputMode="text" maxLength={1}
                       value={voterRollId[i] || ""} autoFocus={i === 0} autoComplete="off" autoCapitalize="characters" spellCheck={false}
+                      animate={{ scale: voterRollId[i] ? [1, 1.12, 1] : 1 }} transition={{ duration: 0.22 }}
                       onChange={e => {
                         const ch = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
                         if (!ch) return;
@@ -666,29 +704,39 @@ const EventDetailPage = () => {
                         setTimeout(() => codeRefs[Math.min(p.length, 5)].current?.focus(), 0);
                         if (p.length === 6) setTimeout(() => handleVerifyVoterId(), 150);
                       }}
-                      className="w-11 h-14 sm:w-12 sm:h-16 rounded-xl text-center font-mono font-black text-2xl focus:outline-none border-2 bg-muted/30 transition-all"
+                      className="w-11 h-14 sm:w-12 sm:h-16 rounded-xl text-center font-mono font-black text-2xl focus:outline-none border-2 bg-muted/30 transition-all focus:shadow-lg"
                       style={{
                         borderColor: voterRollError ? "#ef4444" : voterRollId[i] ? ORANGE : "#d1d5db",
                         color: voterRollId[i] ? NAVY : "#9ca3af",
                         background: voterRollId[i] ? `${ORANGE}10` : undefined,
+                        boxShadow: voterRollId[i] && !voterRollError ? `0 0 0 4px ${ORANGE}1f` : "none",
                       }}
                     />
                   ))}
-                </div>
-                {voterRollError && (
-                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center gap-2 px-4 py-3 rounded-xl mb-5"
-                    style={{ background: "#ef444415", border: "1px solid #ef444430" }}>
-                    <span className="text-red-500 text-lg">⚠️</span>
-                    <p className="text-red-500 text-sm font-medium">{voterRollError}</p>
-                  </motion.div>
-                )}
+                </motion.div>
+
+                <AnimatePresence>
+                  {voterRollError && (
+                    <motion.div initial={{ opacity: 0, y: -4, height: 0 }} animate={{ opacity: 1, y: 0, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                      className="flex items-center gap-2 px-4 py-3 rounded-xl mb-5"
+                      style={{ background: "#ef444415", border: "1px solid #ef444430" }}>
+                      <span className="text-red-500 text-lg">⚠️</span>
+                      <p className="text-red-500 text-sm font-medium">{voterRollError}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 <button onClick={handleVerifyVoterId} disabled={voterRollLoading || voterRollId.length < 6}
                   className="w-full h-14 rounded-2xl font-bold text-base flex items-center justify-center gap-2 text-white transition-all disabled:opacity-40"
-                  style={{ background: NAVY }}>
+                  style={{ background: `linear-gradient(135deg, ${NAVY}, #001b3d)` }}>
                   {voterRollLoading ? <><Loader2 className="w-5 h-5 animate-spin" /> Verifying…</> : <><Shield className="w-5 h-5" /> Access My Ballot</>}
                 </button>
-                <p className="text-center text-xs text-muted-foreground mt-4">🔒 Each code is single use</p>
+
+                <div className="flex items-center justify-center gap-4 mt-5 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1"><Lock className="w-3 h-3" /> Single use only</span>
+                  <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
+                  <span className="flex items-center gap-1"><HelpCircle className="w-3 h-3" /> Lost your code? Contact your official</span>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -923,7 +971,7 @@ const EventDetailPage = () => {
                           </div>
                           <div>
                             <h3 className="font-display font-bold text-lg">Review Your Ballot</h3>
-                            <p className="text-xs text-muted-foreground">Confirm — this cannot be undone</p>
+                            <p className="text-xs text-muted-foreground">Confirm - this cannot be undone</p>
                           </div>
                         </div>
                       </div>
@@ -939,7 +987,7 @@ const EventDetailPage = () => {
                                     {c.photo && <img src={c.photo} alt={c.name} className="w-6 h-6 rounded-full object-cover" style={{ border: `1px solid ${ORANGE}40` }} />}
                                     <p className="font-semibold text-sm" style={{ color: NAVY }}>{c.name}</p>
                                   </div>
-                                ) : <p className="text-xs text-muted-foreground italic mt-1">No selection — skipped</p>}
+                                ) : <p className="text-xs text-muted-foreground italic mt-1">No selection - skipped</p>}
                               </div>
                               {c ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: ORANGE }} /> : <AlertCircle className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
                             </div>

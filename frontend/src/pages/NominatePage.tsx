@@ -87,6 +87,7 @@ const NominatePage = () => {
   const [preview, setPreview] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const currentStepRef = useRef<HTMLDivElement>(null);
 
   const selectedEvent = events.find(e => e.id === selectedEventId);
   const step = STEPS[stepIdx];
@@ -98,6 +99,10 @@ const NominatePage = () => {
       .catch(() => setEvents([]))
       .finally(() => setLoadingEvents(false));
   }, []);
+
+  useEffect(() => {
+    currentStepRef.current?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [stepIdx]);
 
   const canAdvance = (): boolean => {
     switch (step) {
@@ -215,12 +220,13 @@ const NominatePage = () => {
               />
             </div>
             <style>{`.nominate-steps::-webkit-scrollbar { display: none; }`}</style>
-            <div className="nominate-steps flex items-start overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+            <div className="relative">
+              <div className="nominate-steps flex items-start overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
               {STEPS.map((s, i) => {
                 const isDone = i < stepIdx;
                 const isCurrent = i === stepIdx;
                 return (
-                  <div key={s} className="flex items-center flex-shrink-0">
+                  <div key={s} className="flex items-center flex-shrink-0" ref={isCurrent ? currentStepRef : undefined}>
                     <div className="flex flex-col items-center" style={{ minWidth: 62 }}>
                       <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 flex-shrink-0"
                         style={{
@@ -242,6 +248,9 @@ const NominatePage = () => {
                   </div>
                 );
               })}
+              </div>
+              <div className="pointer-events-none absolute top-0 left-0 h-full w-6" style={{ background: "linear-gradient(90deg, white, transparent)" }} />
+              <div className="pointer-events-none absolute top-0 right-0 h-full w-6" style={{ background: "linear-gradient(270deg, white, transparent)" }} />
             </div>
           </div>
 
@@ -259,7 +268,7 @@ const NominatePage = () => {
                 {step === "event" && (
                   <div>
                     <label className="text-sm font-medium mb-2 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Which event are you nominating yourself for?</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-[65vh] overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[65vh] overflow-y-auto pr-1">
                       {events.map(ev => {
                         const isSelected = selectedEventId === ev.id;
                         const image = ev.banner_image || ev.thumbnail;
@@ -319,7 +328,7 @@ const NominatePage = () => {
                 {step === "full_name" && (
                   <div>
                     <label className="text-sm font-medium mb-1.5 flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Your Full Name</label>
-                    <p className="text-xs text-muted-foreground mb-2">Your legal name — kept private, not shown publicly.</p>
+                    <p className="text-xs text-muted-foreground mb-2">Your legal name - kept private, not shown publicly.</p>
                     <Input placeholder="e.g. Kwame Asante Mensah" value={fullName} onChange={e => setFullName(e.target.value)}
                       onKeyDown={e => e.key === "Enter" && canAdvance() && next()} className="h-12" autoFocus />
                   </div>
@@ -380,7 +389,7 @@ const NominatePage = () => {
                     </div>
                     <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
                     <p className="text-xs text-muted-foreground text-center mt-3 leading-relaxed">
-                      Please upload a nice, clear photo of yourself — this will be your official picture on the site, seen by everyone who votes for you.
+                      Please upload a nice, clear photo of yourself. This will be your official picture on the site, seen by everyone who votes for you.
                     </p>
                   </div>
                 )}
@@ -401,7 +410,7 @@ const NominatePage = () => {
                       ["Stage Name", stageName],
                       ["Phone", normalizePhone(phone)],
                       ["Category", selectedEvent?.categories.find(c => c.id === categoryId)?.name],
-                      ["Reason", reason || "—"],
+                      ["Reason", reason || "-"],
                     ].map(([label, value]) => (
                       <div key={label} className="flex items-start justify-between gap-3 text-sm py-1.5 border-b border-border/50 last:border-0">
                         <span className="text-muted-foreground flex-shrink-0">{label}</span>

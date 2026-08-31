@@ -349,8 +349,8 @@ const CreateEventModal = ({ onCreated }: { onCreated: () => void }) => {
               <label className="text-sm font-medium mb-1 block">Access Mode</label>
               <select name="voting_mode" value={form.voting_mode} onChange={handleChange}
                 className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-                <option value="open">🌍 Open — Anyone can vote</option>
-                <option value="organizational">🔐 Organizational — Voting code required</option>
+                <option value="open">🌍 Open (Anyone can vote)</option>
+                <option value="organizational">🔐 Organizational (Voting code required)</option>
               </select>
               {isOrg && <p className="text-xs text-secondary mt-1">⚡ You'll set up groups and categories in the next steps.</p>}
             </div>
@@ -703,8 +703,8 @@ const EditEventModal = ({ event, onUpdated }: { event: any; onUpdated: () => voi
             <label className="text-sm font-medium mb-1 block">Access Mode</label>
             <select name="voting_mode" value={form.voting_mode} onChange={handleChange}
               className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-              <option value="open">🌍 Open — Anyone can vote</option>
-              <option value="organizational">🔐 Organizational — Voting code required</option>
+              <option value="open">🌍 Open (Anyone can vote)</option>
+              <option value="organizational">🔐 Organizational (Voting code required)</option>
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">

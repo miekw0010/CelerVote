@@ -187,7 +187,7 @@ export default function AdminOfficialsPage() {
                     <label className="text-xs text-muted-foreground mb-1.5 block">Select election event *</label>
                     <select value={form.event} onChange={e => setForm(f => ({ ...f, event: e.target.value }))}
                       className="w-full h-10 px-3 text-sm rounded-md border border-input bg-background text-foreground">
-                      <option value="">— Select event —</option>
+                      <option value="">Select event</option>
                       {events.map((e: any) => <option key={e.id} value={e.id}>{e.title}</option>)}
                     </select>
                   </div>
@@ -198,7 +198,7 @@ export default function AdminOfficialsPage() {
                     <label className="text-xs text-muted-foreground mb-1.5 block">Select ticket event *</label>
                     <select value={form.ticket_event} onChange={e => setForm(f => ({ ...f, ticket_event: e.target.value }))}
                       className="w-full h-10 px-3 text-sm rounded-md border border-input bg-background text-foreground">
-                      <option value="">— Select event —</option>
+                      <option value="">Select event</option>
                       {ticketEvents.map((e: any) => <option key={e.id} value={e.id}>{e.title}</option>)}
                     </select>
                   </div>
@@ -330,7 +330,7 @@ function WithdrawalCard({ w, onReview }: { w: any; onReview: (id: string, action
              <Clock className="w-4 h-4 text-yellow-400" />}
           </div>
           <div>
-            <p className="font-semibold text-sm">{w.official_name} — {fmt(w.amount)}</p>
+            <p className="font-semibold text-sm">{w.official_name} - {fmt(w.amount)}</p>
             <p className="text-xs text-muted-foreground">{w.event_title} · {new Date(w.created_at).toLocaleDateString()}</p>
           </div>
         </div>

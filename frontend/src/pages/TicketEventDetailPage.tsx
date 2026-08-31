@@ -198,7 +198,7 @@ export default function TicketEventDetailPage() {
   const openPrintWindow = (tickets: any[]) => {
     if (!event || tickets.length === 0) return;
     const blocks = tickets.map((t, i) => buildTicketBlock(t, i, tickets.length)).join("\n");
-    const html = `<!DOCTYPE html><html><head><title>Tickets — ${event.title}</title>
+    const html = `<!DOCTYPE html><html><head><title>Tickets - ${event.title}</title>
 <meta charset="UTF-8"/>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
@@ -283,7 +283,7 @@ ${blocks}
       }
     } catch {
       if (!silent) {
-        toast({ title: "Check My Tickets", description: "Payment may have gone through — check your tickets.", variant: "destructive" });
+        toast({ title: "Check My Tickets", description: "Payment may have gone through. Check your tickets.", variant: "destructive" });
       }
       setStep("checkout");
     }
@@ -746,7 +746,7 @@ ${blocks}
                         onClick={dismissConfirmedTickets}
                         className="w-full h-10 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors border border-border"
                       >
-                        ✓ Done — Dismiss Ticket
+                        ✓ Done - Dismiss Ticket
                       </button>
                       <button
                         onClick={() => navigate("/tickets")}

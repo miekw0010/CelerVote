@@ -201,7 +201,7 @@ function EventModal({ event, onClose, onSaved }: {
                     <Plus className="w-5 h-5 text-muted-foreground" />
                   </div>
                   <p className="text-sm text-muted-foreground">Click to upload banner</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">JPG, PNG — max 10MB</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">JPG, PNG - max 10MB</p>
                 </div>
               )}
             </div>
@@ -402,7 +402,7 @@ function TicketsListModal({ event, onClose }: { event: TicketEvent; onClose: () 
         "</td>",
         "<td style='padding:10px 12px;font-weight:600;font-size:13px;'>" + t.buyer_name + "</td>",
         "<td style='padding:10px 12px;font-size:12px;color:#64748b;'>" + t.buyer_email + "</td>",
-        "<td style='padding:10px 12px;font-size:12px;color:#64748b;'>" + (t.buyer_phone || "—") + "</td>",
+        "<td style='padding:10px 12px;font-size:12px;color:#64748b;'>" + (t.buyer_phone || "-") + "</td>",
         "<td style='padding:10px 12px;'>",
           "<span style='background:" + t.tier_color + "20;color:" + t.tier_color + ";border:1px solid " + t.tier_color + "50;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;'>" + t.tier_name + "</span>",
         "</td>",
@@ -418,10 +418,10 @@ function TicketsListModal({ event, onClose }: { event: TicketEvent; onClose: () 
     });
 
     const html = [
-      "<!DOCTYPE html><html><head><title>Attendee List — " + event.title + "</title>",
+      "<!DOCTYPE html><html><head><title>Attendee List - " + event.title + "</title>",
       "<style>* { margin:0; padding:0; box-sizing:border-box; } body { font-family:'Segoe UI',sans-serif; color:#0f172a; padding:32px; } h1 { font-size:22px; font-weight:800; margin-bottom:4px; } .meta { color:#64748b; font-size:13px; margin-bottom:24px; } .stats { display:flex; gap:16px; margin-bottom:24px; } .stat { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 20px; } .stat-label { font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; } .stat-value { font-size:18px; font-weight:800; color:#0f172a; } table { width:100%; border-collapse:collapse; } thead td { background:#f8fafc; padding:10px 12px; font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#94a3b8; font-weight:700; border-bottom:1px solid #e2e8f0; } .brand { color:#01003c; font-weight:800; font-size:13px; margin-bottom:20px; letter-spacing:1px; } @media print { body { padding:16px; } }</style>",
       "</head><body>",
-      "<div class='brand'>&#10022; CELERVOTE — ADMIN</div>",
+      "<div class='brand'>&#10022; CELERVOTE - ADMIN</div>",
       "<h1>" + event.title + "</h1>",
       "<div class='meta'>&#128205; " + event.venue + " &nbsp;&nbsp; &#128197; " + eventDate + "</div>",
       "<div class='stats'>",

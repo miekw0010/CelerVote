@@ -21,10 +21,10 @@ const ORANGE = "#e87200";
 
 const features = [
   { icon: Vote,        title: "Secure Ballot Casting",       desc: "Run SRC elections, school elections, and organizational ballots with end to end encrypted digital voting" },
-  { icon: Shield,      title: "Tamper Proof Results",        desc: "Every vote is verified and protected against fraud — full audit trail for every election" },
-  { icon: BarChart3,   title: "Real Time Vote Counting",     desc: "Watch election results update live as votes are tallied — no waiting until the end" },
-  { icon: Fingerprint, title: "Voter Roll Management",       desc: "Upload your voter list via CSV, assign groups, manage voting codes — all in one place" },
-  { icon: School,      title: "Vote From Any Device",        desc: "Voters participate from any smartphone, tablet, or computer — no app download needed" },
+  { icon: Shield,      title: "Tamper Proof Results",        desc: "Every vote is verified and protected against fraud, with a full audit trail for every election" },
+  { icon: BarChart3,   title: "Real Time Vote Counting",     desc: "Watch election results update live as votes are tallied, with no waiting until the end" },
+  { icon: Fingerprint, title: "Voter Roll Management",       desc: "Upload your voter list via CSV, assign groups, manage voting codes, all in one place" },
+  { icon: School,      title: "Vote From Any Device",        desc: "Voters participate from any smartphone, tablet, or computer, no app download needed" },
   { icon: Smartphone,  title: "Mobile Money Payments",       desc: "Sell event tickets and collect votes with MTN MoMo, Telecel Cash, and AirtelTigo Money" },
 ];
 
@@ -43,8 +43,8 @@ const stats = [
 ];
 
 const principles = [
-  { icon: Scale,      title: "FAIR & TRANSPARENT", desc: "Every election follows strict democratic principles with a full audit trail — from first vote to final result" },
-  { icon: Lock,       title: "PRIVACY FIRST",      desc: "Your vote is your voice — completely anonymous, end to end encrypted, and protected from interference" },
+  { icon: Scale,      title: "FAIR & TRANSPARENT", desc: "Every election follows strict democratic principles with a full audit trail, from first vote to final result" },
+  { icon: Lock,       title: "PRIVACY FIRST",      desc: "Your vote is your voice: completely anonymous, end to end encrypted, and protected from interference" },
   { icon: BadgeCheck, title: "VERIFIED RESULTS",   desc: "Real time verification ensures every election outcome is accurate, trustworthy, and impossible to dispute" },
 ];
 
@@ -408,7 +408,7 @@ const Index = () => {
               <span style={{ color: '#111' }}>VOTE IN 4 </span><span style={{ color: ORANGE }}>EASY STEPS</span>
             </h2>
             <p style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 400, color: '#666', marginTop: '0.75rem', fontSize: '0.95rem' }}>
-              From registration to results — it's that simple.
+              From registration to results, it's that simple.
             </p>
           </motion.div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -497,7 +497,7 @@ const Index = () => {
               MAKE YOUR VOICE<br /><span style={{ color: ORANGE }}>HEARD TODAY</span>
             </h2>
             <p style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 400, color: 'rgba(255,255,255,0.65)', fontSize: '0.95rem', maxWidth: '480px', margin: '0 auto 2.5rem', lineHeight: 1.7 }}>
-              Join schools, universities, and organizations across Ghana using CelerVote — the most secure and transparent electronic voting platform.
+              Join schools, universities, and organizations across Ghana using CelerVote, the most secure and transparent electronic voting platform.
             </p>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
               <Link to={isAuthenticated ? "/events" : "/auth"}>

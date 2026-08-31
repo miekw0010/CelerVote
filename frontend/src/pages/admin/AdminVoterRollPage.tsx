@@ -124,7 +124,7 @@ const AddVoterForm = ({ slug, groups, onAdded }: { slug: string; groups: VoterGr
       if (!res.ok) throw new Error(data.error || "Failed to add voter");
       toast({
         title: `Voter added! Code: ${data.voting_code}`,
-        description: data.sms_sent ? `SMS sent to ${form.phone}` : form.phone ? "SMS delivery pending" : "No phone — code shown in voter list",
+        description: data.sms_sent ? `SMS sent to ${form.phone}` : form.phone ? "SMS delivery pending" : "No phone (code shown in voter list)",
       });
       setForm({ voter_id: "", name: "", phone: "", email: "", group_id: "" });
       onAdded();
@@ -165,7 +165,7 @@ const AddVoterForm = ({ slug, groups, onAdded }: { slug: string; groups: VoterGr
           <label className="text-xs font-medium mb-1 block">Group (optional)</label>
           <select value={form.group_id} onChange={e => setForm(p => ({ ...p, group_id: e.target.value }))}
             className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
-            <option value="">— No group / General —</option>
+            <option value="">No group / General</option>
             {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
         </div>
@@ -182,7 +182,7 @@ const AddVoterForm = ({ slug, groups, onAdded }: { slug: string; groups: VoterGr
 const CSVUpload = ({ slug, onUploaded }: { slug: string; onUploaded: () => void }) => {
   const [loading, setLoading] = useState(false);
   const [result, setResult]   = useState<any>(null);
-  const [sendSms, setSendSms] = useState(true);
+  const [sendSms, setSendSms] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -216,8 +216,9 @@ const CSVUpload = ({ slug, onUploaded }: { slug: string; onUploaded: () => void 
 
       <div className="flex items-center gap-2">
         <input type="checkbox" id="send_sms_csv" checked={sendSms} onChange={e => setSendSms(e.target.checked)} />
-        <label htmlFor="send_sms_csv" className="text-sm">Send voting codes via SMS to all voters with phone numbers</label>
+        <label htmlFor="send_sms_csv" className="text-sm">Send voting codes via SMS immediately to all voters with phone numbers</label>
       </div>
+      {!sendSms && <p className="text-xs text-muted-foreground -mt-1">Codes won't be sent automatically - use "Resend All" below whenever you're ready.</p>}
 
       <div
         className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-secondary/50 transition-colors"
@@ -255,6 +256,7 @@ const VoterTable = ({ voters, slug, groups, onRefresh }: { voters: Voter[]; slug
   const [statusFilter, setStatus] = useState("");
   const [showCodes, setShowCodes] = useState(false);
   const [resending, setResending] = useState<string | null>(null);
+  const [resendingAll, setResendingAll] = useState(false);
   const { toast } = useToast();
   const { ask: confirm, dialog: confirmDialog } = useConfirm();
 
@@ -279,6 +281,28 @@ const VoterTable = ({ voters, slug, groups, onRefresh }: { voters: Voter[]; slug
     } catch (e: any) {
       toast({ title: "SMS failed", description: e.message, variant: "destructive" });
     } finally { setResending(null); }
+  };
+
+  const resendAll = async () => {
+    const ok = await confirm(
+      "Resend voting codes to all voters?",
+      "This sends (or re-sends) an SMS with the voting code to every voter on the roll who has a phone number.",
+      "Resend All", "info"
+    );
+    if (!ok) return;
+    setResendingAll(true);
+    try {
+      const res = await fetch(`${API}/events/admin/${slug}/voter-roll/resend-all/`, {
+        method: "POST", headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ only_unsent: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast({ title: data.message || "Codes sent ✅" });
+      onRefresh();
+    } catch (e: any) {
+      toast({ title: "Resend failed", description: e.message, variant: "destructive" });
+    } finally { setResendingAll(false); }
   };
 
   const deleteVoter = async (voter: Voter) => {
@@ -337,6 +361,10 @@ const VoterTable = ({ voters, slug, groups, onRefresh }: { voters: Voter[]; slug
           {showCodes ? <EyeOff className="w-3.5 h-3.5 mr-1" /> : <Eye className="w-3.5 h-3.5 mr-1" />}
           {showCodes ? "Hide" : "Show"} Codes
         </Button>
+        <Button variant="outline" size="sm" onClick={resendAll} disabled={resendingAll}>
+          {resendingAll ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1" />}
+          Resend All
+        </Button>
         <Button variant="outline" size="sm" onClick={downloadCSV}>
           <Download className="w-3.5 h-3.5 mr-1" /> Export
         </Button>
@@ -364,8 +392,8 @@ const VoterTable = ({ voters, slug, groups, onRefresh }: { voters: Voter[]; slug
             ) : filtered.map(v => (
               <tr key={v.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
                 <td className="px-3 py-2 font-mono text-xs">{v.voter_id}</td>
-                <td className="px-3 py-2 text-xs">{v.name || <span className="text-muted-foreground">—</span>}</td>
-                <td className="px-3 py-2 text-xs">{v.phone || <span className="text-muted-foreground">—</span>}</td>
+                <td className="px-3 py-2 text-xs">{v.name || <span className="text-muted-foreground">-</span>}</td>
+                <td className="px-3 py-2 text-xs">{v.phone || <span className="text-muted-foreground">-</span>}</td>
                 <td className="px-3 py-2">
                   {v.group
                     ? <span className="text-xs px-2 py-0.5 rounded-full bg-secondary/10 text-secondary border border-secondary/20">{v.group.name}</span>

@@ -40,10 +40,10 @@ export const PrivacyPage = () => (
         <h2 className="font-display font-semibold text-foreground text-base mb-3">1. Information We Collect</h2>
         <p className="mb-3">When you use CelerVote, we collect the following information:</p>
         <ul className="space-y-2 list-disc list-inside">
-          <li><strong className="text-foreground">Contact information</strong> — your email address or phone number used for OTP authentication.</li>
-          <li><strong className="text-foreground">Voting activity</strong> — which events you participated in and when (not which candidate you voted for).</li>
-          <li><strong className="text-foreground">Device information</strong> — IP address and browser/device type for fraud detection.</li>
-          <li><strong className="text-foreground">Payment information</strong> — transaction references for paid votes (we do not store card numbers).</li>
+          <li><strong className="text-foreground">Contact information</strong> - your email address or phone number used for OTP authentication.</li>
+          <li><strong className="text-foreground">Voting activity</strong> - which events you participated in and when (not which candidate you voted for).</li>
+          <li><strong className="text-foreground">Device information</strong> - IP address and browser/device type for fraud detection.</li>
+          <li><strong className="text-foreground">Payment information</strong> - transaction references for paid votes (we do not store card numbers).</li>
         </ul>
       </div>
 
@@ -66,9 +66,9 @@ export const PrivacyPage = () => (
         <h2 className="font-display font-semibold text-foreground text-base mb-3">4. Data Sharing</h2>
         <p className="mb-3">We do not sell your personal data. We only share data with:</p>
         <ul className="space-y-2 list-disc list-inside">
-          <li><strong className="text-foreground">Payment processors</strong> (Paystack) — for processing paid votes.</li>
-          <li><strong className="text-foreground">SMS providers</strong> (Africa's Talking) — for sending OTP codes.</li>
-          <li><strong className="text-foreground">Cloud storage</strong> (Cloudinary) — for storing candidate and event images.</li>
+          <li><strong className="text-foreground">Payment processors</strong> (Paystack) - for processing paid votes.</li>
+          <li><strong className="text-foreground">SMS providers</strong> (Africa's Talking) - for sending OTP codes.</li>
+          <li><strong className="text-foreground">Cloud storage</strong> (Cloudinary) - for storing candidate and event images.</li>
         </ul>
       </div>
 

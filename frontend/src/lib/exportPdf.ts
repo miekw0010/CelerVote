@@ -67,7 +67,7 @@ export function exportResultsPDF(event: any) {
     hline(H - 14, C.border, 0.3);
     color(C.grayLight); font("normal", 7);
     doc.text("CelerVote  |  Secure Electronic Voting", ML, H - 9);
-    doc.text(`${event.title} — Results Report`, W/2, H - 9, { align: "center" });
+    doc.text(`${event.title} - Results Report`, W/2, H - 9, { align: "center" });
     doc.text(`Page ${pg}`, W - MR, H - 9, { align: "right" });
   };
 
@@ -339,8 +339,8 @@ export function exportResultsPDF(event: any) {
         ? cands.filter((c:any)=>c.vote_count===topVotes).map((c:any)=>c.name).join(" & ")
         : cands[0].name;
       const winText = isTied
-        ? `TIED: ${winnerNames} — ${topVotes.toLocaleString()} votes each`
-        : `WINNER: ${winnerNames} — ${topVotes.toLocaleString()} votes (${winPct}%)`;
+        ? `TIED: ${winnerNames} (${topVotes.toLocaleString()} votes each)`
+        : `WINNER: ${winnerNames} (${topVotes.toLocaleString()} votes, ${winPct}%)`;
 
       fill(bgColor); doc.roundedRect(ML, y, CW, 10, 2, 2, "F");
       fill(acColor); doc.roundedRect(ML, y, 3, 10, 1, 1, "F");
@@ -371,7 +371,7 @@ export function exportResultsPDF(event: any) {
       color(C.white); font("bold", 9);
       doc.text("GENERAL CATEGORIES", ML + 10, y + 7);
       color(C.grayLight); font("normal", 7);
-      doc.text(`${globalCats.length} categor${globalCats.length !== 1 ? "ies" : "y"} — open to all voters`, W - MR, y + 7, { align: "right" });
+      doc.text(`${globalCats.length} categor${globalCats.length !== 1 ? "ies" : "y"} (open to all voters)`, W - MR, y + 7, { align: "right" });
       y += 14;
 
       globalCats.forEach((cat: any, ci: number) => drawCategory(cat, ci, "general"));
@@ -385,7 +385,7 @@ export function exportResultsPDF(event: any) {
       color(C.white); font("bold", 9);
       doc.text("GROUP CATEGORIES", ML + 10, y + 7);
       color(C.purpleLight); font("normal", 7);
-      doc.text(`${groupCats.length} categor${groupCats.length !== 1 ? "ies" : "y"} — specific to voter groups`, W - MR, y + 7, { align: "right" });
+      doc.text(`${groupCats.length} categor${groupCats.length !== 1 ? "ies" : "y"} (specific to voter groups)`, W - MR, y + 7, { align: "right" });
       y += 14;
 
       groupCats.forEach((cat: any, ci: number) => drawCategory(cat, ci, "group"));
@@ -476,7 +476,7 @@ export function exportResultsPDF(event: any) {
     W/2, y + 5, { align: "center", maxWidth: CW - 10 }
   );
   color(C.grayLight); font("normal", 7);
-  doc.text("Confidential — For authorised use only", W/2, y + 10, { align: "center" });
+  doc.text("Confidential - For authorised use only", W/2, y + 10, { align: "center" });
 
   drawFooter();
 

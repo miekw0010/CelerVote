@@ -488,7 +488,7 @@ const AdminCandidatesPage = () => {
                     </div>
                     {catGroupIds.length > 1 && (
                       <p className="text-xs text-secondary bg-secondary/5 border border-secondary/20 rounded-lg px-3 py-2">
-                        ⚡ Will create <strong>{catGroupIds.length} separate categories</strong> — one per group, each with their own candidates and independent results.
+                        ⚡ Will create <strong>{catGroupIds.length} separate categories</strong>, one per group, each with their own candidates and independent results.
                       </p>
                     )}
                   </div>

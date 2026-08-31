@@ -197,17 +197,17 @@ const CheckReference = ({ event }: { event: any }) => {
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
             <span className="text-muted-foreground">Paystack status</span>
-            <span className="font-medium capitalize">{result.paystack_status || "—"}</span>
+            <span className="font-medium capitalize">{result.paystack_status || "-"}</span>
             <span className="text-muted-foreground">Amount paid</span>
             <span className="font-medium">{result.currency} {result.amount_paid?.toFixed(2)}</span>
             <span className="text-muted-foreground">Voter email</span>
-            <span className="font-medium">{result.voter_email || "—"}</span>
+            <span className="font-medium">{result.voter_email || "-"}</span>
             <span className="text-muted-foreground">Votes cast</span>
             <span className={`font-bold ${result.votes_cast > 0 ? "text-green-400" : "text-red-400"}`}>
               {result.votes_cast}
             </span>
             <span className="text-muted-foreground">Paid at</span>
-            <span>{result.paid_at ? new Date(result.paid_at).toLocaleString() : "—"}</span>
+            <span>{result.paid_at ? new Date(result.paid_at).toLocaleString() : "-"}</span>
           </div>
 
           {result.needs_recovery && (

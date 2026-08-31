@@ -491,7 +491,7 @@ export function PaymentModal({
                       </p>
                       <p className="text-xs text-[#64748b]">
                         We opened the secure payment page in a new tab. Once you finish there,
-                        come back here — this window will update automatically.
+                        come back here. This window will update automatically.
                       </p>
                       {checkoutUrl && (
                         <button

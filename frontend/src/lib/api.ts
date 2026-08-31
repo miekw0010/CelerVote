@@ -557,6 +557,17 @@ export const officialsApi = {
     }).then((r) => r.json());
   },
 
+  /** Election official: resend a single voter's voting-code SMS */
+  resendVoterSMS: (voterId: string) =>
+    apiFetch(`/officials/voter-roll/${voterId}/resend/`, { method: "POST" }),
+
+  /** Election official: resend voting-code SMS to all voters (optionally only ones not yet sent) */
+  resendAllVoterSMS: (onlyUnsent = false) =>
+    apiFetch(`/officials/voter-roll/resend-all/`, {
+      method: "POST",
+      body: JSON.stringify({ only_unsent: onlyUnsent }),
+    }),
+
   /** Official: list own withdrawal requests */
   getWithdrawals: () => apiFetch("/officials/withdrawals/"),
 

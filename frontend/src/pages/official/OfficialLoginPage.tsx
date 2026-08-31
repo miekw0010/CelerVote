@@ -182,7 +182,7 @@ export default function OfficialLoginPage() {
                     <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 mb-5">
                       <span className="text-amber-500 text-base">🔑</span>
                       <div>
-                        <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Dev mode — OTP</p>
+                        <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Dev mode - OTP</p>
                         <p className="text-lg font-mono font-black tracking-widest text-amber-600">{devOtp}</p>
                       </div>
                     </div>

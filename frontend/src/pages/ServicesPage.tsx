@@ -24,7 +24,7 @@ const services = [
   {
     icon: Vote,
     title: "Host an Election or Voting Event",
-    desc: "Want to run a student election, awards show, or community poll? We set up everything for you — categories, candidates, voting pages, real time results, and security. You just share the link.",
+    desc: "Want to run a student election, awards show, or community poll? We set up everything for you: categories, candidates, voting pages, real time results, and security. You just share the link.",
     color: "from-secondary to-accent",
     bg: "bg-secondary/5 border-secondary/20",
     perks: ["Custom branded voting page", "Real time live results dashboard", "Fraud detection & vote security", "Free & paid voting support", "Results export (PDF & CSV)"],
@@ -33,7 +33,7 @@ const services = [
   },
   {
     icon: Palette,
-    title: "Graphic Design — Posters & Flyers",
+    title: "Graphic Design - Posters & Flyers",
     desc: "Need eye catching visuals for your event? We design professional posters, flyers, social media graphics, and banners that get attention and drive engagement.",
     color: "from-pink-500 to-purple-500",
     bg: "bg-pink-500/5 border-pink-500/20",
@@ -84,7 +84,7 @@ export default function ServicesPage() {
               For You
             </h1>
             <p style={{ fontFamily: M, fontWeight: 400, color: 'rgba(255,255,255,0.75)', fontSize: '1rem', maxWidth: '540px', margin: '0 auto 2.5rem', lineHeight: 1.8 }}>
-              From hosting your election to designing your event visuals — we've got you covered. Reach out and let's make your event a success.
+              From hosting your election to designing your event visuals, we've got you covered. Reach out and let's make your event a success.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a href={whatsappUrl("Hi! I'd like to learn more about your services.")} target="_blank" rel="noopener noreferrer">
@@ -92,7 +92,7 @@ export default function ServicesPage() {
                   <MessageCircle className="w-5 h-5" /> Chat on WhatsApp
                 </Button>
               </a>
-              <a href={emailUrl("General Enquiry — CelerVote Services")} target="_blank" rel="noopener noreferrer">
+              <a href={emailUrl("General Enquiry - CelerVote Services")} target="_blank" rel="noopener noreferrer">
                 <Button size="lg" className="gap-2 h-14 px-8 rounded-full text-lg bg-white/20 backdrop-blur-sm border border-white/40 text-white hover:bg-white/30" style={{ fontFamily: M }}>
                   <Mail className="w-5 h-5" /> Send an Email
                 </Button>
@@ -166,14 +166,14 @@ export default function ServicesPage() {
         <div className="container mx-auto px-4 relative z-10">
           <motion.div className="text-center mb-12" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }}>
             <h2 className="font-hero text-3xl md:text-4xl mb-3" style={{ fontFamily: M, fontWeight: 900 }}>Why Work With Us?</h2>
-            <p className="text-muted-foreground max-w-md mx-auto" style={{ fontFamily: M }}>We're not just a platform — we're a team that cares about your event's success.</p>
+            <p className="text-muted-foreground max-w-md mx-auto" style={{ fontFamily: M }}>We're not just a platform - we're a team that cares about your event's success.</p>
           </motion.div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
               { icon: Shield,         title: "Trusted & Secure",  desc: "Military grade encryption on all voting and payment data.",       color: "text-secondary" },
               { icon: Zap,            title: "Fast Turnaround",   desc: "We move quickly so your event setup is ready when you need it.",  color: "text-yellow-400" },
               { icon: Star,           title: "Quality Service",   desc: "Professional results delivered with attention to every detail.",   color: "text-pink-400" },
-              { icon: MessageCircle,  title: "Always Available",  desc: "Reach us on WhatsApp any time — we respond fast.",               color: "text-green-400" },
+              { icon: MessageCircle,  title: "Always Available",  desc: "Reach us on WhatsApp any time, we respond fast.",               color: "text-green-400" },
             ].map((item, i) => (
               <motion.div key={item.title} className="vibrant-card text-center" custom={i} initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}>
                 <item.icon className={`w-8 h-8 ${item.color} mx-auto mb-3`} />
@@ -202,7 +202,7 @@ export default function ServicesPage() {
                   <MessageCircle className="w-5 h-5" /> +233 50 180 2950
                 </Button>
               </a>
-              <a href={emailUrl("Service Enquiry — CelerVote")} target="_blank" rel="noopener noreferrer">
+              <a href={emailUrl("Service Enquiry - CelerVote")} target="_blank" rel="noopener noreferrer">
                 <Button size="lg" className="gap-2 h-14 px-8 rounded-full text-lg bg-white/20 backdrop-blur-sm border border-white/40 text-white hover:bg-white/30" style={{ fontFamily: M }}>
                   <Mail className="w-5 h-5" /> celervote@gmail.com
                 </Button>

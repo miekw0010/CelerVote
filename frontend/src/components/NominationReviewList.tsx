@@ -183,7 +183,7 @@ export function NominationReviewList({
                     <Row icon={Sparkles} label="Stage Name" value={selected.stage_name} />
                     <Row icon={Phone} label="Phone" value={selected.phone} />
                     <Row icon={Tag} label="Category" value={selected.category.name} />
-                    <Row icon={MessageSquare} label="Reason" value={selected.reason || "—"} />
+                    <Row icon={MessageSquare} label="Reason" value={selected.reason || "-"} />
                     {selected.candidate_code && <Row icon={Hash} label="Contestant Code" value={selected.candidate_code} />}
                     {selected.rejection_reason && <Row icon={XCircle} label="Rejection Reason" value={selected.rejection_reason} />}
                   </div>

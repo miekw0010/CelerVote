@@ -147,7 +147,7 @@ const AdminNotificationsPage = () => {
         {[
           { icon: Users,  label: "Total Votes",    value: selectedEvent?.total_votes || 0 },
           { icon: Trophy, label: "Results",         value: selectedEvent?.results_visible ? "Published" : "Hidden" },
-          { icon: Clock,  label: "Status",          value: selectedEvent?.status || "—" },
+          { icon: Clock,  label: "Status",          value: selectedEvent?.status || "-" },
         ].map(stat => (
           <div key={stat.label} className="glass-card p-4 flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center flex-shrink-0">

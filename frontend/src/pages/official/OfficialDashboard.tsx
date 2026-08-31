@@ -7,13 +7,14 @@ import {
   Upload, Plus, Download, RefreshCw, Trophy, TrendingUp,
   Wallet, ArrowDownToLine, CheckCheck, X, UserPlus,
   ChevronRight, ScanLine, PieChart, ArrowUpFromLine,
-  Layers, Printer, Camera, CameraOff, BarChart, Sparkles
+  Layers, Printer, Camera, CameraOff, BarChart, Sparkles, Eye, EyeOff, Send
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { officialsApi, nominationsApi } from "@/lib/api";
 import { NominationReviewList, Nomination } from "@/components/NominationReviewList";
+import { useConfirm } from "@/components/ConfirmDialog";
 import {
   BarChart as RBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart as RPieChart, Pie, Cell, Legend,
@@ -135,12 +136,12 @@ function QRScanner({ onScan, onClose }: { onScan: (code: string) => void; onClos
 function printTicketList(tickets: any[], eventTitle: string, filterLabel = "All") {
   const rows = tickets.map((t) => {
     const statusColor = t.status === "paid" ? "#01003c" : t.status === "used" ? "#16a34a" : t.status === "pending" ? "#ca8a04" : "#dc2626";
-    const tierName = t.tier_name || t.tier?.name || "—";
+    const tierName = t.tier_name || t.tier?.name || "-";
     return [
       `<tr style='border-bottom:1px solid #e2e8f0;'>`,
       `<td style='padding:8px 10px;font-weight:600;font-size:12px;'>${t.buyer_name}</td>`,
-      `<td style='padding:8px 10px;font-size:11px;color:#64748b;'>${t.buyer_email || "—"}</td>`,
-      `<td style='padding:8px 10px;font-size:11px;color:#64748b;'>${t.buyer_phone || "—"}</td>`,
+      `<td style='padding:8px 10px;font-size:11px;color:#64748b;'>${t.buyer_email || "-"}</td>`,
+      `<td style='padding:8px 10px;font-size:11px;color:#64748b;'>${t.buyer_phone || "-"}</td>`,
       `<td style='padding:8px 10px;font-size:11px;font-weight:600;'>${tierName}</td>`,
       `<td style='padding:8px 10px;text-align:center;font-size:11px;'>${t.quantity}</td>`,
       `<td style='padding:8px 10px;font-family:monospace;font-size:11px;letter-spacing:1px;'>${t.ticket_code}</td>`,
@@ -152,7 +153,7 @@ function printTicketList(tickets: any[], eventTitle: string, filterLabel = "All"
   const checkin = tickets.filter(t => t.status === "used").length;
 
   const html = [
-    `<!DOCTYPE html><html><head><title>Ticket List — ${eventTitle}</title>`,
+    `<!DOCTYPE html><html><head><title>Ticket List - ${eventTitle}</title>`,
     `<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:'Segoe UI',sans-serif;color:#0f172a;padding:28px;}`,
     `h1{font-size:20px;font-weight:800;margin-bottom:2px;}.meta{color:#64748b;font-size:12px;margin-bottom:20px;}`,
     `.stats{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}`,
@@ -162,7 +163,7 @@ function printTicketList(tickets: any[], eventTitle: string, filterLabel = "All"
     `table{width:100%;border-collapse:collapse;}thead td{background:#f8fafc;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:700;border-bottom:1px solid #e2e8f0;}`,
     `.brand{color:#01003c;font-weight:800;font-size:12px;margin-bottom:16px;letter-spacing:1px;}`,
     `@media print{body{padding:12px;} .no-print{display:none;}}</style></head><body>`,
-    `<div class='brand'>★ CELERVOTE — OFFICIAL PORTAL</div>`,
+    `<div class='brand'>★ CELERVOTE - OFFICIAL PORTAL</div>`,
     `<h1>${eventTitle}</h1><div class='meta'>Printed ${new Date().toLocaleString("en-GH")} · Filter: ${filterLabel}</div>`,
     `<div class='stats'>`,
     `<div class='stat'><div class='stat-label'>Total in list</div><div class='stat-value'>${tickets.length}</div></div>`,
@@ -831,7 +832,7 @@ function ResultsView({ results, isOrg }: { results: any[]; isOrg: boolean }) {
 
       {/* ── Expand/collapse all ── */}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{results.length} categories — tap any to expand</p>
+        <p className="text-xs text-muted-foreground">{results.length} categories - tap any to expand</p>
         <button
           onClick={() => setExpandAll(e => !e)}
           className="text-xs text-secondary hover:underline"
@@ -912,6 +913,7 @@ function ResultsView({ results, isOrg }: { results: any[]; isOrg: boolean }) {
 // ── Election Dashboard ────────────────────────────────────────────────────────
 function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any }) {
   const { toast }                     = useToast();
+  const { ask: confirm, dialog: confirmDialog } = useConfirm();
   const [activeTab, setActiveTab]     = useState<"overview" | "voters" | "results" | "withdraw" | "nominations">("overview");
   const [withdrawAmount, setWithdrawAmount]             = useState("");
   const [withdrawNote, setWithdrawNote]                 = useState("");
@@ -928,6 +930,10 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
   const [showAddVoter, setShowAddVoter] = useState(false);
   const [newVoter, setNewVoter]       = useState({ voter_id: "", name: "", phone: "", email: "", group_id: "" });
   const [addingVoter, setAddingVoter] = useState(false);
+  const [showCodes, setShowCodes] = useState(false);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [resendingAll, setResendingAll] = useState(false);
+  const [sendSmsOnUpload, setSendSmsOnUpload] = useState(false);
   const csvRef = useRef<HTMLInputElement>(null)
 
   const [nominations, setNominations]           = useState<Nomination[]>([]);
@@ -1012,11 +1018,37 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
   const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     try {
-      await officialsApi.uploadVoterCSV(file, false);
-      toast({ title: "CSV uploaded ✅" });
+      await officialsApi.uploadVoterCSV(file, sendSmsOnUpload);
+      toast({ title: "CSV uploaded ✅", description: sendSmsOnUpload ? "Voting codes sent by SMS." : "Codes were not sent. Use Resend All when you're ready." });
       loadVoters();
     } catch (e: any) { toast({ title: "CSV upload failed", description: e?.message, variant: "destructive" }); }
     e.target.value = "";
+  };
+
+  const handleResendVoter = async (voterId: string) => {
+    setResendingId(voterId);
+    try {
+      await officialsApi.resendVoterSMS(voterId);
+      toast({ title: "Code resent ✅" });
+      loadVoters();
+    } catch (e: any) { toast({ title: "Resend failed", description: e?.message, variant: "destructive" }); }
+    finally { setResendingId(null); }
+  };
+
+  const handleResendAll = async () => {
+    const ok = await confirm(
+      "Resend voting codes to all voters?",
+      "This sends (or re-sends) an SMS with the voting code to every voter on the roll who has a phone number.",
+      "Resend All", "info"
+    );
+    if (!ok) return;
+    setResendingAll(true);
+    try {
+      const res = await officialsApi.resendAllVoterSMS(false);
+      toast({ title: res.message || "Codes sent ✅" });
+      loadVoters();
+    } catch (e: any) { toast({ title: "Resend failed", description: e?.message, variant: "destructive" }); }
+    finally { setResendingAll(false); }
   };
 
   const handleWithdraw = async () => {
@@ -1100,12 +1132,22 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
                   <option value="used">Voted</option>
                 </select>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="outline" onClick={() => setShowCodes(s => !s)} className="gap-1.5 h-9">
+                  {showCodes ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />} {showCodes ? "Hide" : "Show"} Codes
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleResendAll} disabled={resendingAll} className="gap-1.5 h-9">
+                  {resendingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Resend All
+                </Button>
                 <Button size="sm" variant="outline" onClick={() => setShowAddVoter(v => !v)} className="gap-1.5 h-9"><UserPlus className="w-3.5 h-3.5" /> Add</Button>
                 <Button size="sm" variant="outline" onClick={() => csvRef.current?.click()} className="gap-1.5 h-9"><Upload className="w-3.5 h-3.5" /> CSV</Button>
                 <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={handleCSVUpload} />
               </div>
             </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer w-fit">
+              <input type="checkbox" checked={sendSmsOnUpload} onChange={e => setSendSmsOnUpload(e.target.checked)} />
+              Send voting codes by SMS immediately when I upload a CSV
+            </label>
             <AnimatePresence>
               {showAddVoter && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
@@ -1142,17 +1184,26 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
               ) : (
                 <div className="divide-y divide-border/20">
                   {voters.map((v: any) => (
-                    <div key={v.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
-                      <div>
-                        <p className="text-sm font-semibold">{v.name || v.voter_id}</p>
+                    <div key={v.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate">{v.name || v.voter_id}</p>
                         <p className="text-xs text-muted-foreground font-mono">{v.voter_id}</p>
                         {v.group__name && <p className="text-xs text-muted-foreground">{v.group__name}</p>}
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-shrink-0">
                         {v.phone && <p className="text-xs text-muted-foreground hidden sm:block">{v.phone}</p>}
-                        <span className={`text-xs px-2 py-1 rounded-full border font-medium ${
+                        <span className="text-xs font-mono px-2 py-1 rounded bg-muted min-w-[64px] text-center">
+                          {showCodes ? v.voting_code : "••••••"}
+                        </span>
+                        <span className={`text-xs px-2 py-1 rounded-full border font-medium whitespace-nowrap ${
                           v.status === "used" ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
                         }`}>{v.status === "used" ? "Voted" : "Not voted"}</span>
+                        {v.phone && v.status !== "used" && (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 gap-1 text-xs" disabled={resendingId === v.id} onClick={() => handleResendVoter(v.id)}>
+                            {resendingId === v.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                            <span className="hidden sm:inline">Resend</span>
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1264,6 +1315,7 @@ function ElectionDashboard({ profile, dashData }: { profile: any; dashData: any 
         )}
 
       </AnimatePresence>
+      {confirmDialog}
     </div>
   );
 }

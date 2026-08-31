@@ -190,7 +190,7 @@ const AdminVotersPage = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{v.voter_name || "Anonymous"}</p>
-                    <p className="text-xs text-muted-foreground truncate">{v.voter_email || v.voter_phone || "—"}</p>
+                    <p className="text-xs text-muted-foreground truncate">{v.voter_email || v.voter_phone || "-"}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-sm font-medium">{v.votes_cast} votes</p>
@@ -286,7 +286,7 @@ const AdminVotersPage = () => {
                           <div className="w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center text-xs font-bold text-secondary flex-shrink-0">
                             {(v.name || "?")[0].toUpperCase()}
                           </div>
-                          <span className="text-sm font-medium">{v.name || "—"}</span>
+                          <span className="text-sm font-medium">{v.name || "-"}</span>
                         </div>
                       </td>
                       <td className="py-3 px-2 hidden sm:table-cell">
@@ -348,7 +348,7 @@ const AdminVotersPage = () => {
                   {(selectedVoter.name || "?")[0].toUpperCase()}
                 </div>
                 <div>
-                  <p className="font-medium">{selectedVoter.name || "—"}</p>
+                  <p className="font-medium">{selectedVoter.name || "-"}</p>
                   <p className="text-xs text-muted-foreground">{selectedVoter.email}</p>
                   {selectedVoter.phone && <p className="text-xs text-muted-foreground">{selectedVoter.phone}</p>}
                 </div>
